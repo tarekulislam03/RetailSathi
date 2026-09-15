@@ -1,0 +1,10 @@
+first i crease one admin acount for a store from direct cloud database sql editor.
+
+thenit will sync to all counters as user tables in their local database
+
+then admin pc tries to log in using cred and local database checks if user exist or not, if TRUE, lets admin in
+
+same in cahsier
+
+
+now if admin adds, edit or delete any user, it syncs again to cloud and then to all counters local database except admin.

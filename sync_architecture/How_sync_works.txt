@@ -1,0 +1,6 @@
+suppose admin is updating inventory from his own computer.
+
+when admin updates something in inventory, it will first execute a aql query(UPDATE) in local sqlite database. then it will crease a sync job with the same sql query. then when internet availables, the sync job will start executing the sql queries like a stack (first in first out), (connecting to the cloud database, will name the tables same as local database). then it will update the inventory database in cloud. next it will send the same query to other counters except the one counter which mainly started the process. then other counters will run the exact query annd updates their own database.
+
+Same process repeat in each actions.
+

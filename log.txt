@@ -1,0 +1,25 @@
+134|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:29
+135|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:29
+136|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:29
+137|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:29
+138|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:32
+139|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:32
+140|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:35
+141|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:35
+142|INSERT INTO sales (id, invoice_no, customer_name, customer_phone, total_amount, discount, tax_amount, grand_total, payment_mode, marketing_person_id, created_at) VALUES (31, 'INV-20260915-125143-467', 'Walk-in Customer', '', 188, 15, 18.535714285714306, 173, 'Cash', NULL, '15 Sept 2026, 12:51:43 pm');|2026-09-15 07:21:43
+143|INSERT INTO sale_items (id, sale_id, product_id, product_name, barcode, price, quantity, total_price) VALUES (46, 31, 23, 'Bread', '13132424', 87, 1, 87);|2026-09-15 07:21:43
+144|UPDATE products SET stock = stock - 1 WHERE id = 23;|2026-09-15 07:21:43
+145|INSERT INTO sale_items (id, sale_id, product_id, product_name, barcode, price, quantity, total_price) VALUES (47, 31, 22, 'Brown Brad', '1432536445', 86, 1, 86);|2026-09-15 07:21:43
+146|UPDATE products SET stock = stock - 1 WHERE id = 22;|2026-09-15 07:21:43
+147|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:43
+148|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:46
+149|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:46
+150|UPDATE products
+     SET barcode = '13132424', name = 'Bread', batch_no = 'CBNSBN673', mrp = 88, price = 87, cost_price = 0, stock = 6, hsn_code = '80095''', reorder_threshold = 5, gst_rate = 12, category = 'General'
+     WHERE id = 23;|2026-09-15 07:21:56
+151|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:56
+152|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:21:59
+153|UPDATE customers
+     SET name = 'Najimul', phone = '354367454', address = ''
+     WHERE id = 5;|2026-09-15 07:22:04
+154|DELETE FROM products WHERE name = 'Product' AND (price = 0 OR price IS NULL) AND (barcode IS NULL OR barcode = '');|2026-09-15 07:22:29
