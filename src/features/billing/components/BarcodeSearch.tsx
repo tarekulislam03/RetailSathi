@@ -5,12 +5,14 @@ interface BarcodeSearchProps {
   products: Product[];
   onAddToCart: (product: Product) => void;
   onError: (msg: string) => void;
+  todayBillsCount?: number;
 }
 
 export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
   products,
   onAddToCart,
   onError,
+  todayBillsCount,
 }) => {
   const [quickSearch, setQuickSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -122,9 +124,27 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
 
   return (
     <div className="card pos-search-card">
-      <label htmlFor="quickSearch" className="font-semibold">
-        Scan Barcode or Select Product:
-      </label>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+        <label htmlFor="quickSearch" className="font-semibold" style={{ margin: 0 }}>
+          Scan Barcode or Select Product:
+        </label>
+        {todayBillsCount !== undefined && (
+          <div
+            style={{
+              fontSize: "0.78rem",
+              fontWeight: 700,
+              color: "#103c6b",
+              background: "linear-gradient(to bottom, #edf5fe 0%, #d2e4fc 100%)",
+              border: "1px solid #7092be",
+              padding: "2px 8px",
+              borderRadius: "3px",
+              boxShadow: "inset 0 1px 0 #ffffff",
+            }}
+          >
+            Today's Bills: <strong>{todayBillsCount}</strong>
+          </div>
+        )}
+      </div>
       <div className="search-dropdown-wrapper">
         <input
           ref={searchInputRef}

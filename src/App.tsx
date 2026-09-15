@@ -11,11 +11,13 @@ import { CustomersPage } from "./features/customers/pages/CustomersPage";
 import { LedgerPage } from "./features/ledger/pages/LedgerPage";
 import { MarketingPage } from "./features/marketing/pages/MarketingPage";
 import { UsersPage } from "./features/users/pages/UsersPage";
+import { UpdateChecker } from "./components/common/UpdateChecker";
 import "./App.css";
 
 function App() {
   return (
     <AuthProvider>
+      <UpdateChecker />
       <HashRouter>
         <Routes>
           {/* Public Login Route */}

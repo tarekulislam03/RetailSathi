@@ -207,6 +207,37 @@ export async function fetchSales(): Promise<Sale[]> {
   return sales;
 }
 
+export async function fetchTodayBillsCount(): Promise<number> {
+  const db = await getDb();
+  const sales = await db.select<{ created_at: string }[]>(
+    "SELECT created_at FROM sales"
+  );
+  const now = new Date();
+  const todayDay = now.getDate();
+  const todayMonth = now.getMonth();
+  const todayYear = now.getFullYear();
+  const todayStr = now.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  let count = 0;
+  for (const s of sales) {
+    const saleDate = s.created_at ? new Date(s.created_at) : null;
+    const isToday =
+      saleDate &&
+      !isNaN(saleDate.getTime()) &&
+      saleDate.getDate() === todayDay &&
+      saleDate.getMonth() === todayMonth &&
+      saleDate.getFullYear() === todayYear;
+    if (isToday || (s.created_at && s.created_at.includes(todayStr))) {
+      count++;
+    }
+  }
+  return count;
+}
+
 export async function fetchSaleDetails(saleId: number): Promise<Sale | null> {
   const db = await getDb();
   const sales = await db.select<Sale[]>(

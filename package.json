@@ -1,7 +1,7 @@
 {
   "name": "tauri-app",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,13 +9,18 @@
     "test": "vitest run",
     "preview": "vite preview",
     "seed:cloud": "node scripts/seed-cloud.js",
+    "build:app": "node scripts/build.js",
+    "build:windows": "node scripts/build.js --target x86_64-pc-windows-gnu",
+    "release:publish": "node scripts/publish-release.js",
     "tauri": "tauri"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-sql": "^2.4.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.18.3"

@@ -5,7 +5,7 @@ import { Customer } from "../../customers/types";
 import { fetchCustomers } from "../../customers/services/customerService";
 import { MarketingPerson } from "../../marketing/types";
 import { fetchMarketingPersons } from "../../marketing/services/marketingService";
-import { createSale } from "../services/billingService";
+import { createSale, fetchTodayBillsCount } from "../services/billingService";
 import { CartItem, Sale } from "../types";
 import { BarcodeSearch } from "../components/BarcodeSearch";
 import { CartTable } from "../components/CartTable";
@@ -20,6 +20,7 @@ export const BillingPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [marketingPersons, setMarketingPersons] = useState<MarketingPerson[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [todayBillsCount, setTodayBillsCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   // Customer & Bill Form
@@ -38,13 +39,15 @@ export const BillingPage: React.FC = () => {
         await pullDataFromCloud();
         prods = await fetchProducts();
       }
-      const [custs, mkts] = await Promise.all([
+      const [custs, mkts, billCount] = await Promise.all([
         fetchCustomers(),
         fetchMarketingPersons(),
+        fetchTodayBillsCount(),
       ]);
       setProducts(prods);
       setCustomers(custs);
       setMarketingPersons(mkts);
+      setTodayBillsCount(billCount);
 
       // Keep cart product details synchronized if a product name/price/stock changed in DB
       setCart((prevCart) => {
@@ -211,6 +214,7 @@ export const BillingPage: React.FC = () => {
             products={products}
             onAddToCart={handleAddToCart}
             onError={(msg) => setError(msg)}
+            todayBillsCount={todayBillsCount}
           />
 
           <CartTable
