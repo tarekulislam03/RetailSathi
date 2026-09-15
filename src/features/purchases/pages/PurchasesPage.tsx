@@ -8,6 +8,7 @@ import { PurchaseListTable } from "../components/PurchaseListTable";
 import { AddPurchaseModal } from "../components/AddPurchaseModal";
 import { PurchaseDetailsModal } from "../components/PurchaseDetailsModal";
 import { ManageSuppliersModal } from "../components/ManageSuppliersModal";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const PurchasesPage: React.FC = () => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -18,17 +19,21 @@ export const PurchasesPage: React.FC = () => {
   const [notification, setNotification] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const list = await getAllPurchases();
       setPurchases(list);
     } catch (err) {
-      console.error("Failed to load purchase records:", err);
+      if (!silent) {
+        console.error("Failed to load purchase records:", err);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+
+  useDbRefresh(() => loadData(true), 3000);
 
   useEffect(() => {
     loadData();

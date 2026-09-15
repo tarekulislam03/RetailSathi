@@ -11,6 +11,7 @@ import { CustomerTable } from "../components/CustomerTable";
 import { CustomerModal } from "../components/CustomerModal";
 import { CustomerPurchasesModal } from "../components/CustomerPurchasesModal";
 import { ClearDuesModal } from "../components/ClearDuesModal";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const CustomersPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -30,19 +31,23 @@ export const CustomersPage: React.FC = () => {
   // Clear Dues Modal State
   const [clearDuesCustomer, setClearDuesCustomer] = useState<Customer | null>(null);
 
-  async function loadData() {
+  async function loadData(silent = false) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const list = await fetchCustomers();
       setCustomers(list);
     } catch (err: any) {
-      console.error("Failed to load customer records:", err);
-      setError(err?.message || "Failed to load customers from database.");
+      if (!silent) {
+        console.error("Failed to load customer records:", err);
+        setError(err?.message || "Failed to load customers from database.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  useDbRefresh(() => loadData(true), 3000);
 
   useEffect(() => {
     loadData();

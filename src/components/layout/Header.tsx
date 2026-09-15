@@ -7,6 +7,7 @@ import {
   addClearedNotificationIds,
 } from "../../services/notificationService";
 import { NotificationModal } from "./NotificationModal";
+import { NetworkIndicator } from "./NetworkIndicator";
 
 export const Header: React.FC = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -73,6 +74,9 @@ export const Header: React.FC = () => {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Network Indicator (Wifi) */}
+          <NetworkIndicator />
+
           {/* Notification Bell Button beside time */}
           <button
             type="button"

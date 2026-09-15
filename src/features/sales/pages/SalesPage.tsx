@@ -12,6 +12,7 @@ import { ManageGstModal } from "../components/ManageGstModal";
 import { ManageSalesProfitModal } from "../components/ManageSalesProfitModal";
 import { EditSaleModal } from "../components/EditSaleModal";
 import { DeleteSaleModal } from "../components/DeleteSaleModal";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const SalesPage: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
@@ -43,19 +44,23 @@ export const SalesPage: React.FC = () => {
   const [isGstModalOpen, setIsGstModalOpen] = useState(false);
   const [isSalesProfitModalOpen, setIsSalesProfitModalOpen] = useState(false);
 
-  async function loadSalesData() {
+  async function loadSalesData(silent = false) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const result = await fetchSalesWithItems();
       setSales(result.sales);
       setAnalytics(result.analytics);
     } catch (err: any) {
-      setError(err?.message || "Failed to load sales analytics & history.");
+      if (!silent) {
+        setError(err?.message || "Failed to load sales analytics & history.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  useDbRefresh(() => loadSalesData(true), 3000);
 
   useEffect(() => {
     loadSalesData();

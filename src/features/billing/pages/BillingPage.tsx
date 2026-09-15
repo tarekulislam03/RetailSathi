@@ -12,6 +12,9 @@ import { CartTable } from "../components/CartTable";
 import { CheckoutPanel } from "../components/CheckoutPanel";
 import { ReceiptModal } from "../components/ReceiptModal";
 
+import { pullDataFromCloud } from "../../../services/syncProcessor";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
+
 export const BillingPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -30,18 +33,41 @@ export const BillingPage: React.FC = () => {
 
   async function loadBillingData() {
     try {
-      const [prods, custs, mkts] = await Promise.all([
-        fetchProducts(),
+      let prods = await fetchProducts();
+      if (prods.length === 0 && typeof navigator !== "undefined" && navigator.onLine) {
+        await pullDataFromCloud();
+        prods = await fetchProducts();
+      }
+      const [custs, mkts] = await Promise.all([
         fetchCustomers(),
         fetchMarketingPersons(),
       ]);
       setProducts(prods);
       setCustomers(custs);
       setMarketingPersons(mkts);
+
+      // Keep cart product details synchronized if a product name/price/stock changed in DB
+      setCart((prevCart) => {
+        if (prevCart.length === 0) return prevCart;
+        return prevCart.map((item) => {
+          const fresh = prods.find((p) => p.id === item.product.id);
+          if (fresh) {
+            return {
+              ...item,
+              product: fresh,
+              total: fresh.price * item.quantity,
+            };
+          }
+          return item;
+        });
+      });
     } catch (err: any) {
-      setError(err?.message || "Failed to load products and customers for billing.");
+      // Ignore background refresh errors
     }
   }
+
+  // Constant live refresh: syncs every 2.5 seconds, on window focus, and on database sync events
+  useDbRefresh(loadBillingData, 2500);
 
   useEffect(() => {
     loadBillingData();

@@ -10,6 +10,8 @@ import { StatsGrid } from "../components/StatsGrid";
 import { LowStockModal } from "../components/LowStockModal";
 import { ProductTable } from "../components/ProductTable";
 import { ProductModal } from "../components/ProductModal";
+import { pullDataFromCloud } from "../../../services/syncProcessor";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const InventoryPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -22,19 +24,27 @@ export const InventoryPage: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  async function loadData() {
+  async function loadData(silent = false) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
-      const data = await fetchProducts();
+      let data = await fetchProducts();
+      if (data.length === 0 && typeof navigator !== "undefined" && navigator.onLine) {
+        await pullDataFromCloud();
+        data = await fetchProducts();
+      }
       setProducts(data);
     } catch (err: any) {
-      console.error("Failed to load products:", err);
-      setError(err?.message || "Failed to load products from database.");
+      if (!silent) {
+        console.error("Failed to load products:", err);
+        setError(err?.message || "Failed to load products from database.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  useDbRefresh(() => loadData(true), 3000);
 
   useEffect(() => {
     loadData();

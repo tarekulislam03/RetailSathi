@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StockMovement } from "../types";
 import { fetchStockMovements } from "../services/ledgerService";
 import { LedgerTable } from "../components/LedgerTable";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const LedgerPage: React.FC = () => {
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -14,19 +15,23 @@ export const LedgerPage: React.FC = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  async function loadData() {
+  async function loadData(silent = false) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const list = await fetchStockMovements();
       setMovements(list);
     } catch (err: any) {
-      console.error("Failed to load stock ledger movements:", err);
-      setError(err?.message || "Failed to load stock movements from database.");
+      if (!silent) {
+        console.error("Failed to load stock ledger movements:", err);
+        setError(err?.message || "Failed to load stock movements from database.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  useDbRefresh(() => loadData(true), 3000);
 
   useEffect(() => {
     loadData();

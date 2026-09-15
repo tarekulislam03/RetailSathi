@@ -5,6 +5,7 @@ let dbInstance: Database | null = null;
 let rawExecuteFn: ((query: string, bindValues?: unknown[]) => Promise<QueryResult>) | null = null;
 
 const SYNC_TABLES = new Set([
+  "users",
   "products",
   "sales",
   "sale_items",
@@ -175,6 +176,21 @@ async function initTables(db: Database) {
     );
   `);
 
+  // Users table (offline auth credentials & role management)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      full_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'cashier',
+      phone TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // Products table
   await db.execute(`
     CREATE TABLE IF NOT EXISTS products (
@@ -334,7 +350,6 @@ async function initTables(db: Database) {
 
   // Drop extra tables created previously
   const dropExtraTables = [
-    "DROP TABLE IF EXISTS users",
     "DROP TABLE IF EXISTS sessions",
     "DROP TABLE IF EXISTS sync_queue",
     "DROP TABLE IF EXISTS sync_cursor",

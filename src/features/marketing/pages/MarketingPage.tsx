@@ -10,6 +10,7 @@ import { MarketingTable } from "../components/MarketingTable";
 import { MarketingModal } from "../components/MarketingModal";
 import { MarketingDetailsModal } from "../components/MarketingDetailsModal";
 import { MonthYearPicker } from "../components/MonthYearPicker";
+import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const MarketingPage: React.FC = () => {
   const [persons, setPersons] = useState<MarketingPerson[]>([]);
@@ -29,20 +30,24 @@ export const MarketingPage: React.FC = () => {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [viewDetailsPerson, setViewDetailsPerson] = useState<MarketingPerson | null>(null);
 
-  async function loadData(monthStr?: string) {
+  async function loadData(monthStr?: string, silent = false) {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const m = monthStr !== undefined ? monthStr : selectedMonth;
       const list = await fetchMarketingPersons(m);
       setPersons(list);
     } catch (err: any) {
-      console.error("Failed to load marketing personnel:", err);
-      setError(err?.message || "Failed to load marketing personnel from database.");
+      if (!silent) {
+        console.error("Failed to load marketing personnel:", err);
+        setError(err?.message || "Failed to load marketing personnel from database.");
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
+
+  useDbRefresh(() => loadData(selectedMonth, true), 3000);
 
   useEffect(() => {
     loadData(selectedMonth);
