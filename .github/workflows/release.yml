@@ -52,7 +52,7 @@ jobs:
           targets: ${{ matrix.platform == 'windows-latest' && 'x86_64-pc-windows-msvc' || 'x86_64-unknown-linux-gnu' }}
 
       - name: Install Frontend Dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build Tauri App & Publish Platform Release
         uses: tauri-apps/tauri-action@v0

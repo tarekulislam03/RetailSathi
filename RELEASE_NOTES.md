@@ -1,5 +1,4 @@
-# R'Simnosoft Pest Control'
-etail Sathi v0.1.1 - POS Counter Enhancements
+# Retail Sathi v0.1.4 - Multiplatform Release
 
 ### 🚀 What's New & Improvements
 - **Today's Bills Counter Badge**: Added a live transaction counter directly on the POS search header showing total completed bills for today.
