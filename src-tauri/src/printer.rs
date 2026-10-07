@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
 use std::io::Write;
+#[allow(unused_imports)]
 use std::process::{Command, Stdio};
 
 /// Build a PowerShell command that does not flash a console window on Windows.
