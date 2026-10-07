@@ -11,6 +11,8 @@ import { CustomersPage } from "./features/customers/pages/CustomersPage";
 import { LedgerPage } from "./features/ledger/pages/LedgerPage";
 import { MarketingPage } from "./features/marketing/pages/MarketingPage";
 import { UsersPage } from "./features/users/pages/UsersPage";
+import { SettingsPage } from "./features/settings/pages/SettingsPage";
+import { GstReportPage } from "./features/reports/pages/GstReportPage";
 import { UpdateChecker } from "./components/common/UpdateChecker";
 import "./App.css";
 
@@ -36,10 +38,14 @@ function App() {
                 <Route path="inventory" element={<InventoryPage />} />
                 <Route path="purchases" element={<PurchasesPage />} />
                 <Route path="sales" element={<SalesPage />} />
+                <Route path="sales-history" element={<SalesPage />} />
                 <Route path="customers" element={<CustomersPage />} />
                 <Route path="ledger" element={<LedgerPage />} />
+                <Route path="gst-report" element={<GstReportPage />} />
+                <Route path="reports" element={<GstReportPage />} />
                 <Route path="marketing" element={<MarketingPage />} />
                 <Route path="users" element={<UsersPage />} />
+                <Route path="settings" element={<SettingsPage />} />
               </Route>
 
               <Route path="*" element={<Navigate to="/billing" replace />} />

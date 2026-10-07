@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { StockMovement } from "../types";
 import { fetchStockMovements } from "../services/ledgerService";
 import { LedgerTable } from "../components/LedgerTable";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
 export const LedgerPage: React.FC = () => {
+  const navigate = useNavigate();
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +93,23 @@ export const LedgerPage: React.FC = () => {
 
       <section className="card list-card">
         <div className="list-header">
-          <h2>Stock Movement Ledger ({filteredMovements.length})</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <h2>Stock Movement Ledger ({filteredMovements.length})</h2>
+            <button
+              type="button"
+              className="btn secondary-btn"
+              onClick={() => navigate("/gst-report")}
+              style={{
+                fontSize: "0.78rem",
+                padding: "4px 10px",
+                fontWeight: 700,
+                color: "#103c6b",
+                borderColor: "#7092be",
+              }}
+            >
+              📊 Export GST Report (Excel & PDF)
+            </button>
+          </div>
 
           <div className="list-actions" style={{ gap: "10px" }}>
             <input

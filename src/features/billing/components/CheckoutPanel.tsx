@@ -63,12 +63,18 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
   // 3. Grand Total
   const grandTotal = totalMRP - totalDiscount;
 
-  // Sync single paid input when grandTotal changes if user hasn't explicitly edited it
+  // Always keep single paid input set to the full grand total when grand total updates
   useEffect(() => {
-    if (singlePaidInput === "" || Number(singlePaidInput) === 0) {
-      setSinglePaidInput(grandTotal > 0 ? String(grandTotal) : "");
-    }
+    setSinglePaidInput(grandTotal > 0 ? String(grandTotal) : "");
   }, [grandTotal]);
+
+  // Clear split payment inputs when cart is cleared
+  useEffect(() => {
+    if (cart.length === 0) {
+      setCashPaidInput("");
+      setUpiPaidInput("");
+    }
+  }, [cart.length]);
 
   // 4. Taxable Amount & GST Amount (Inclusive GST)
   let totalTaxableAmount = 0;
@@ -631,7 +637,7 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
         }}
         disabled={isCheckoutBlocked}
       >
-        COMPLETE SALE & PRINT INVOICE
+        COMPLETE SALE & VIEW BILL
       </button>
     </div>
   );

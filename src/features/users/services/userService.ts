@@ -6,19 +6,53 @@ export async function fetchUsers(searchQuery = ""): Promise<User[]> {
   const trimmed = searchQuery.trim().toLowerCase();
 
   let query = `
-    SELECT id, username, full_name, role, phone, is_active, created_at, updated_at
-    FROM users
+    SELECT 
+      u.id, 
+      u.username, 
+      u.full_name, 
+      u.role, 
+      u.phone, 
+      u.store_id, 
+      s.name AS store_name, 
+      u.is_active, 
+      u.created_at, 
+      u.updated_at
+    FROM users u
+    LEFT JOIN stores s ON u.store_id = s.id
   `;
   const params: any[] = [];
 
   if (trimmed) {
-    query += ` WHERE LOWER(username) LIKE $1 OR LOWER(full_name) LIKE $2 OR phone LIKE $3`;
-    params.push(`%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`);
+    query += ` WHERE LOWER(u.username) LIKE $1 OR LOWER(u.full_name) LIKE $2 OR u.phone LIKE $3 OR LOWER(COALESCE(s.name, '')) LIKE $4`;
+    params.push(`%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`);
   }
 
-  query += ` ORDER BY id DESC`;
+  query += ` ORDER BY u.id DESC`;
 
   const rows = await db.select<User[]>(query, params);
+  return rows || [];
+}
+
+export async function getUsersByStoreId(storeId: number): Promise<User[]> {
+  const db = await getDb();
+  const rows = await db.select<User[]>(
+    `SELECT 
+       u.id, 
+       u.username, 
+       u.full_name, 
+       u.role, 
+       u.phone, 
+       u.store_id, 
+       s.name AS store_name, 
+       u.is_active, 
+       u.created_at, 
+       u.updated_at
+     FROM users u
+     LEFT JOIN stores s ON u.store_id = s.id
+     WHERE u.store_id = $1
+     ORDER BY u.id ASC`,
+    [storeId]
+  );
   return rows || [];
 }
 
@@ -51,12 +85,13 @@ export async function createUser(input: CreateUserInput): Promise<{ success: boo
 
   const role = input.role || "cashier";
   const phone = input.phone?.trim() || null;
+  const storeId = input.store_id !== undefined ? input.store_id : null;
   const isActive = input.is_active === false ? 0 : 1;
 
   const result = await db.execute(
-    `INSERT INTO users (username, password_hash, full_name, role, phone, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [cleanUsername, cleanPassword, cleanFullName, role, phone, isActive]
+    `INSERT INTO users (username, password_hash, full_name, role, phone, store_id, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [cleanUsername, cleanPassword, cleanFullName, role, phone, storeId, isActive]
   );
 
   return {
@@ -95,6 +130,11 @@ export async function updateUser(
   if (input.phone !== undefined) {
     updates.push(`phone = $${paramIdx++}`);
     params.push(input.phone?.trim() || null);
+  }
+
+  if (input.store_id !== undefined) {
+    updates.push(`store_id = $${paramIdx++}`);
+    params.push(input.store_id);
   }
 
   if (input.is_active !== undefined) {

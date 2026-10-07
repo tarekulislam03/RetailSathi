@@ -94,26 +94,93 @@ export async function processSyncJobs(): Promise<void> {
 }
 
 /**
+ * Pull all stores from Supabase Cloud and upsert into local SQLite.
+ */
+async function pullStores(): Promise<void> {
+  const { data, error } = await supabase
+    .from("stores")
+    .select("id, name, code, address, phone, email, setup_cost, amc, is_active, created_at, updated_at");
+
+  if (error || !data || data.length === 0) return;
+
+  for (const store of data) {
+    const isActiveVal = store.is_active === true || store.is_active === 1 ? 1 : 0;
+    await rawExecute(
+      `INSERT INTO stores (id, name, code, address, phone, email, setup_cost, amc, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT(id) DO UPDATE SET
+         name = COALESCE(NULLIF(stores.name, ''), excluded.name),
+         code = COALESCE(NULLIF(stores.code, ''), excluded.code),
+         address = COALESCE(NULLIF(stores.address, ''), excluded.address),
+         phone = COALESCE(NULLIF(stores.phone, ''), excluded.phone),
+         email = COALESCE(NULLIF(stores.email, ''), excluded.email),
+         setup_cost = excluded.setup_cost,
+         amc = excluded.amc,
+         is_active = excluded.is_active,
+         updated_at = excluded.updated_at`,
+      [
+        store.id,
+        store.name,
+        store.code || null,
+        store.address || null,
+        store.phone || null,
+        store.email || null,
+        store.setup_cost ?? 0,
+        store.amc ?? 0,
+        isActiveVal,
+        store.created_at || new Date().toISOString(),
+        store.updated_at || new Date().toISOString(),
+      ]
+    );
+  }
+}
+
+/**
+ * Pull per-store settings from cloud. Newest write wins (updated_ms), so a
+ * stale cloud row can never overwrite a newer local save.
+ */
+async function pullSettings(): Promise<void> {
+  const { data, error } = await supabase
+    .from("settings")
+    .select("store_id, key, value, updated_ms");
+
+  if (error || !data || data.length === 0) return;
+
+  for (const s of data) {
+    await rawExecute(
+      `INSERT INTO settings (store_id, key, value, updated_ms)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT(store_id, key) DO UPDATE SET
+         value = excluded.value,
+         updated_ms = excluded.updated_ms
+       WHERE excluded.updated_ms > settings.updated_ms`,
+      [s.store_id, s.key, s.value ?? null, Number(s.updated_ms) || 0]
+    );
+  }
+}
+
+/**
  * Pull all users from Supabase Cloud and upsert into local SQLite.
  */
 async function pullUsers(): Promise<void> {
   const { data, error } = await supabase
     .from("users")
-    .select("id, username, password_hash, full_name, role, phone, is_active, created_at, updated_at");
+    .select("id, username, password_hash, full_name, role, phone, store_id, is_active, created_at, updated_at");
 
   if (error || !data || data.length === 0) return;
 
   for (const user of data) {
     const isActiveVal = user.is_active === true || user.is_active === 1 ? 1 : 0;
     await rawExecute(
-      `INSERT INTO users (id, username, password_hash, full_name, role, phone, is_active, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO users (id, username, password_hash, full_name, role, phone, store_id, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT(username) DO UPDATE SET
          id = excluded.id,
          password_hash = excluded.password_hash,
          full_name = excluded.full_name,
          role = excluded.role,
          phone = excluded.phone,
+         store_id = excluded.store_id,
          is_active = excluded.is_active,
          updated_at = excluded.updated_at`,
       [
@@ -123,6 +190,7 @@ async function pullUsers(): Promise<void> {
         user.full_name,
         user.role || "cashier",
         user.phone || null,
+        user.store_id ?? null,
         isActiveVal,
         user.created_at || new Date().toISOString(),
         user.updated_at || new Date().toISOString(),
@@ -439,6 +507,8 @@ export async function pullDataFromCloud(): Promise<void> {
   isPulling = true;
   try {
     // Topological order: parent tables first, then dependent child tables
+    await pullStores();
+    await pullSettings();
     await pullUsers();
     await pullMarketing();
     await pullSuppliers();

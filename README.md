@@ -1,3 +1,4 @@
+
 <div align="center">
 
 <h1>Retail Sathi</h1>
@@ -152,3 +153,5 @@ Distributed under the **MIT License**. See `LICENSE` for details.
 <div align="center">
   <sub>Built for reliable store operations, rapid checkout speed, and enterprise retail synchronization.</sub>
 </div>
+
+

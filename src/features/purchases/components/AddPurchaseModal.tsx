@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Product } from "../../inventory/types";
 import { fetchProducts } from "../../inventory/services/inventoryService";
 import { Supplier } from "../types/supplier";
 import { fetchSuppliers } from "../services/supplierService";
 import { PurchaseItemDraft, CreatePurchaseInput } from "../types";
 import { Pagination } from "../../../components/common/Pagination";
+
+import { generateUniqueBarcode } from "../../../utils/barcodeGenerator";
 
 interface AddPurchaseModalProps {
   isOpen: boolean;
@@ -22,9 +24,28 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   const [existingProducts, setExistingProducts] = useState<Product[]>([]);
   const [savedSuppliers, setSavedSuppliers] = useState<Supplier[]>([]);
 
+  // Refs for Enter key navigation
+  const supplierNameInputRef = useRef<HTMLInputElement>(null);
+  const invoiceNoInputRef = useRef<HTMLInputElement>(null);
+  const purchaseDateInputRef = useRef<HTMLInputElement>(null);
+  const gstNoInputRef = useRef<HTMLInputElement>(null);
+  const contactNoInputRef = useRef<HTMLInputElement>(null);
+  const inventorySearchInputRef = useRef<HTMLInputElement>(null);
+  const productNameInputRef = useRef<HTMLInputElement>(null);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const batchNoInputRef = useRef<HTMLInputElement>(null);
+  const hsnCodeInputRef = useRef<HTMLInputElement>(null);
+  const categoryInputRef = useRef<HTMLInputElement>(null);
+  const gstRateInputRef = useRef<HTMLInputElement>(null);
+  const purchasePriceInputRef = useRef<HTMLInputElement>(null);
+  const mrpInputRef = useRef<HTMLInputElement>(null);
+  const sellingPriceInputRef = useRef<HTMLInputElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+
   // Header form fields
   const [supplierName, setSupplierName] = useState("");
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [selectedSupplierIndex, setSelectedSupplierIndex] = useState(0);
   const [invoiceNo, setInvoiceNo] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(
     new Date().toISOString().split("T")[0]
@@ -35,6 +56,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   // Search existing product state
   const [searchProdTerm, setSearchProdTerm] = useState("");
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [selectedProductIndex, setSelectedProductIndex] = useState(0);
 
   // Product detail input fields
   const [selectedProdId, setSelectedProdId] = useState<number | null>(null);
@@ -61,7 +83,6 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
   useEffect(() => {
     setItemsPage(1);
   }, [draftItems.length]);
-
 
   useEffect(() => {
     if (isOpen) {
@@ -92,6 +113,9 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     if (s.gst_no) setGstNo(s.gst_no);
     if (s.contact_no) setContactNo(s.contact_no);
     setShowSupplierDropdown(false);
+    setTimeout(() => {
+      invoiceNoInputRef.current?.focus();
+    }, 50);
   }
 
   const matchedExistingProducts = searchProdTerm.trim()
@@ -121,13 +145,18 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     setPurchasePrice(cost ? Number(cost).toFixed(2) : "");
     setSearchProdTerm(prod.name);
     setShowSearchDropdown(false);
+    setTimeout(() => {
+      purchasePriceInputRef.current?.focus();
+      purchasePriceInputRef.current?.select();
+    }, 50);
   }
 
-  function handleAddItem() {
+  function handleAddItem(): boolean {
     setErrorMsg("");
     if (!productName.trim()) {
       setErrorMsg("Please enter or select a product name.");
-      return;
+      productNameInputRef.current?.focus();
+      return false;
     }
 
     const pPrice = parseFloat(purchasePrice);
@@ -138,23 +167,35 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
     if (isNaN(pPrice) || pPrice < 0) {
       setErrorMsg("Please enter a valid Purchase Price (Cost).");
-      return;
+      purchasePriceInputRef.current?.focus();
+      return false;
     }
 
     if (isNaN(sPrice) || sPrice < 0) {
       setErrorMsg("Please enter a valid Selling Price.");
-      return;
+      sellingPriceInputRef.current?.focus();
+      return false;
     }
 
     if (isNaN(qty) || qty <= 0) {
       setErrorMsg("Please enter a valid Quantity greater than 0.");
-      return;
+      quantityInputRef.current?.focus();
+      return false;
+    }
+
+    let finalBarcode = barcode.trim();
+    if (!finalBarcode) {
+      const allBarcodes = [
+        ...existingProducts.map((p) => p.barcode),
+        ...draftItems.map((d) => d.barcode),
+      ];
+      finalBarcode = generateUniqueBarcode(allBarcodes);
     }
 
     const newItem: PurchaseItemDraft = {
       product_id: selectedProdId,
       product_name: productName.trim(),
-      barcode: barcode.trim(),
+      barcode: finalBarcode,
       batch_no: batchNo.trim(),
       hsn_code: hsnCode.trim(),
       category: category.trim() || "General",
@@ -166,7 +207,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
       subtotal: pPrice * qty,
     };
 
-    setDraftItems([...draftItems, newItem]);
+    setDraftItems((prev) => [...prev, newItem]);
 
     // Reset item entry form
     setSelectedProdId(null);
@@ -182,6 +223,14 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
     setSellingPrice("");
     setQuantity("1");
     setShowSearchDropdown(false);
+    setSelectedProductIndex(0);
+
+    // Focus back to Search Product / Product Name for rapid continuous entry
+    setTimeout(() => {
+      inventorySearchInputRef.current?.focus();
+    }, 50);
+
+    return true;
   }
 
   function handleRemoveItem(index: number) {
@@ -289,24 +338,50 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
                 <label>Supplier Name * (Type to search saved suppliers)</label>
                 <div className="search-dropdown-wrapper">
                   <input
+                    ref={supplierNameInputRef}
                     type="text"
                     placeholder="Search or enter supplier name..."
                     value={supplierName}
                     onChange={(e) => {
                       setSupplierName(e.target.value);
                       setShowSupplierDropdown(true);
+                      setSelectedSupplierIndex(0);
                     }}
                     onFocus={() => setShowSupplierDropdown(true)}
                     onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setSelectedSupplierIndex((prev) =>
+                          Math.min(prev + 1, matchedSuppliers.length - 1)
+                        );
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setSelectedSupplierIndex((prev) => Math.max(prev - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (showSupplierDropdown && matchedSuppliers.length > 0) {
+                          const s =
+                            matchedSuppliers[selectedSupplierIndex] ||
+                            matchedSuppliers[0];
+                          handleSelectSavedSupplier(s);
+                        } else {
+                          setShowSupplierDropdown(false);
+                          invoiceNoInputRef.current?.focus();
+                        }
+                      } else if (e.key === "Escape") {
+                        setShowSupplierDropdown(false);
+                      }
+                    }}
                     autoFocus
                   />
 
                   {showSupplierDropdown && matchedSuppliers.length > 0 && (
                     <div className="search-dropdown" style={{ zIndex: 1150, maxHeight: "200px" }}>
-                      {matchedSuppliers.map((s) => (
+                      {matchedSuppliers.map((s, idx) => (
                         <div
                           key={s.id}
-                          className="dropdown-item"
+                          className={`dropdown-item ${idx === selectedSupplierIndex ? "selected active" : ""}`}
                           onMouseDown={() => handleSelectSavedSupplier(s)}
                         >
                           <div className="item-info">
@@ -328,10 +403,17 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <div className="form-group">
                 <label>Invoice No *</label>
                 <input
+                  ref={invoiceNoInputRef}
                   type="text"
                   placeholder="e.g. INV-2026-001"
                   value={invoiceNo}
                   onChange={(e) => setInvoiceNo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      purchaseDateInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -340,29 +422,50 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <div className="form-group">
                 <label>Purchase Date *</label>
                 <input
+                  ref={purchaseDateInputRef}
                   type="date"
                   value={purchaseDate}
                   onChange={(e) => setPurchaseDate(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      gstNoInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>GST No</label>
                 <input
+                  ref={gstNoInputRef}
                   type="text"
                   placeholder="e.g. 22AAAAA0000A1Z5"
                   value={gstNo}
                   onChange={(e) => setGstNo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      contactNoInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Contact No</label>
                 <input
+                  ref={contactNoInputRef}
                   type="text"
                   placeholder="+91 9876543210"
                   value={contactNo}
                   onChange={(e) => setContactNo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      inventorySearchInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -394,6 +497,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               </label>
               <div className="search-dropdown-wrapper">
                 <input
+                  ref={inventorySearchInputRef}
                   id="inventorySearchInput"
                   type="text"
                   className="search-input"
@@ -402,18 +506,43 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
                   onChange={(e) => {
                     setSearchProdTerm(e.target.value);
                     setShowSearchDropdown(true);
+                    setSelectedProductIndex(0);
                   }}
                   onFocus={() => setShowSearchDropdown(true)}
                   onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setSelectedProductIndex((prev) =>
+                        Math.min(prev + 1, matchedExistingProducts.length - 1)
+                      );
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setSelectedProductIndex((prev) => Math.max(prev - 1, 0));
+                    } else if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (showSearchDropdown && matchedExistingProducts.length > 0) {
+                        const p =
+                          matchedExistingProducts[selectedProductIndex] ||
+                          matchedExistingProducts[0];
+                        handleSelectProductFromSearch(p);
+                      } else {
+                        setShowSearchDropdown(false);
+                        productNameInputRef.current?.focus();
+                      }
+                    } else if (e.key === "Escape") {
+                      setShowSearchDropdown(false);
+                    }
+                  }}
                   style={{ width: "100%", height: "34px", fontSize: "0.92rem" }}
                 />
 
                 {showSearchDropdown && matchedExistingProducts.length > 0 && (
                   <div className="search-dropdown" style={{ zIndex: 1100, maxHeight: "220px" }}>
-                    {matchedExistingProducts.map((p) => (
+                    {matchedExistingProducts.map((p, idx) => (
                       <div
                         key={p.id}
-                        className="dropdown-item"
+                        className={`dropdown-item ${idx === selectedProductIndex ? "selected active" : ""}`}
                         onMouseDown={() => handleSelectProductFromSearch(p)}
                       >
                         <div className="item-info">
@@ -437,50 +566,85 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <div className="form-group">
                 <label>Product Name *</label>
                 <input
+                  ref={productNameInputRef}
                   type="text"
                   placeholder="Product Name"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      barcodeInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Barcode</label>
                 <input
+                  ref={barcodeInputRef}
                   type="text"
                   placeholder="Scan or type barcode"
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      batchNoInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Batch No.</label>
                 <input
+                  ref={batchNoInputRef}
                   type="text"
                   placeholder="e.g. B2026-09"
                   value={batchNo}
                   onChange={(e) => setBatchNo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      hsnCodeInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>HSN Code</label>
                 <input
+                  ref={hsnCodeInputRef}
                   type="text"
                   placeholder="e.g. 1006.30"
                   value={hsnCode}
                   onChange={(e) => setHsnCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      categoryInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Category</label>
                 <input
+                  ref={categoryInputRef}
                   type="text"
                   placeholder="General"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      gstRateInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -492,59 +656,94 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
               <div className="form-group">
                 <label>GST Rate (%)</label>
                 <input
+                  ref={gstRateInputRef}
                   type="number"
                   step="0.1"
                   min="0"
                   placeholder="0"
                   value={gstRate}
                   onChange={(e) => setGstRate(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      purchasePriceInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Purchase Price (Cost ₹) *</label>
                 <input
+                  ref={purchasePriceInputRef}
                   type="number"
                   min="0"
                   step="0.01"
                   placeholder="Cost per unit"
                   value={purchasePrice}
                   onChange={(e) => setPurchasePrice(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      mrpInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>MRP (₹)</label>
                 <input
+                  ref={mrpInputRef}
                   type="number"
                   min="0"
                   step="0.01"
                   placeholder="MRP"
                   value={mrp}
                   onChange={(e) => setMrp(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      sellingPriceInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Selling Price (₹) *</label>
                 <input
+                  ref={sellingPriceInputRef}
                   type="number"
                   min="0"
                   step="0.01"
                   placeholder="Selling MRP"
                   value={sellingPrice}
                   onChange={(e) => setSellingPrice(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      quantityInputRef.current?.focus();
+                    }
+                  }}
                 />
               </div>
 
               <div className="form-group">
                 <label>Quantity *</label>
                 <input
+                  ref={quantityInputRef}
                   type="number"
                   min="1"
                   placeholder="1"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddItem();
+                    }
+                  }}
                 />
               </div>
 

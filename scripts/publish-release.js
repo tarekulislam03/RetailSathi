@@ -4,8 +4,10 @@
  * Features:
  * - Reads release title and markdown changelog from RELEASE_NOTES.md (or prompts interactively)
  * - Automatically populates GitHub Release with rich markdown (Features, Bug Fixes, Improvements)
- * - Updates latest.json with release notes so cashiers see what's new in the in-app update popup
- * - Uploads all compiled binaries and signatures directly to your public GitHub releases repository
+ * - Updates latest.json with release notes and ENSURES BOTH Windows and Linux platforms are included
+ * - Preserves existing platform entries when publishing from single-OS runners or cross-compilation
+ * - Uploads ONLY compiled binaries and signatures for the current version (cleans out old version files)
+ * - Automatically purges older version assets attached to the release tag on GitHub
  * 
  * Usage:
  *   npm run release:publish
@@ -111,6 +113,13 @@ async function getReleaseDetails(version) {
   return { title: releaseTitle, body: releaseBody };
 }
 
+// Strict version matching across various platform delimiter conventions (_amd64, _x64, -1.x86_64, etc.)
+function matchesExactVersion(filename, ver) {
+  const escaped = ver.replace(/\./g, "\\.");
+  const pattern = new RegExp(`(^|[_-])${escaped}([\\._-]|$)`, "i");
+  return pattern.test(filename);
+}
+
 async function main() {
   console.log("=========================================");
   console.log("  Retail Sathi - Professional Publisher  ");
@@ -128,7 +137,7 @@ async function main() {
 
   const [owner, repo] = GITHUB_RELEASE_REPO.split("/");
 
-  // Read app version
+  // Read app version from tauri.conf.json
   const tauriConfPath = path.join(rootDir, "src-tauri", "tauri.conf.json");
   const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, "utf-8"));
   const version = tauriConf.version;
@@ -136,7 +145,13 @@ async function main() {
 
   console.log(`📦 Target Repository: https://github.com/${owner}/${repo}`);
   console.log(`🏷️  Release Tag:       ${tagName}`);
-  console.log(`🚀 Version:           ${version}\n`);
+  console.log(`🚀 Current Version:   ${version}\n`);
+
+  const headers = {
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "RetailSathi-ReleaseTool",
+  };
 
   // Get professional release notes
   const { title: releaseTitle, body: releaseBody } = await getReleaseDetails(version);
@@ -144,7 +159,9 @@ async function main() {
   // Search bundle directories for release artifacts (both native and cross-compiled)
   const candidateDirs = [
     path.join(rootDir, "src-tauri", "target", "x86_64-pc-windows-gnu", "release", "bundle"),
+    path.join(rootDir, "src-tauri", "target", "x86_64-pc-windows-msvc", "release", "bundle"),
     path.join(rootDir, "src-tauri", "target", "release", "bundle"),
+    path.join(rootDir, "src-tauri", "target", "x86_64-unknown-linux-gnu", "release", "bundle"),
   ];
 
   const filesToUpload = [];
@@ -157,20 +174,19 @@ async function main() {
       if (entry.isDirectory()) {
         collectFiles(fullPath);
       } else {
-        const ext = path.extname(entry.name).toLowerCase();
-        const isValidExt =
-          ext === ".exe" ||
-          ext === ".msi" ||
-          ext === ".zip" ||
-          ext === ".sig" ||
-          ext === ".deb" ||
-          ext === ".appimage" ||
-          ext === ".rpm";
+        const lower = entry.name.toLowerCase();
+        const isValidFile =
+          lower.endsWith(".exe") ||
+          lower.endsWith(".msi") ||
+          lower.endsWith(".zip") ||
+          lower.endsWith(".sig") ||
+          lower.endsWith(".deb") ||
+          lower.endsWith(".appimage") ||
+          lower.endsWith(".rpm") ||
+          lower.endsWith(".tar.gz");
 
-        // ONLY include artifacts for the current version (ignore older builds)
-        const isCurrentVersion = entry.name.includes(version);
-
-        if (isValidExt && isCurrentVersion) {
+        // Strictly verify that this file belongs ONLY to the current version
+        if (isValidFile && matchesExactVersion(entry.name, version)) {
           if (!filesToUpload.some((f) => f.name === entry.name)) {
             filesToUpload.push({ name: entry.name, path: fullPath });
           }
@@ -183,25 +199,140 @@ async function main() {
     collectFiles(dir);
   }
 
-  // Always generate a fresh latest.json for the current version
-  const platforms = {};
+  // 1. Check existing release on GitHub to preserve existing platforms
+  console.log(`🔍 Checking release ${tagName} on GitHub...`);
+  let existingRelease = null;
+  const getRelRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tagName}`,
+    { headers }
+  );
 
-  const winExe = filesToUpload.find((f) => f.name.endsWith(".exe") && f.name.includes(version));
-  const winSig = filesToUpload.find((f) => f.name.endsWith(".exe.sig") && f.name.includes(version));
+  if (getRelRes.ok) {
+    existingRelease = await getRelRes.json();
+  }
+
+  // Fetch previous latest.json from GitHub release if available to ensure multi-platform merging
+  let remotePlatforms = {};
+  try {
+    const manifestUrl = `https://github.com/${owner}/${repo}/releases/download/${tagName}/latest.json`;
+    const manifestRes = await fetch(manifestUrl);
+    if (manifestRes.ok) {
+      const prevManifest = await manifestRes.json();
+      if (prevManifest.platforms) {
+        remotePlatforms = prevManifest.platforms;
+        console.log("📥 Merged existing platform entries from GitHub latest.json:", Object.keys(remotePlatforms).join(", "));
+      }
+    }
+  } catch (e) {
+    // Ignore if not present yet
+  }
+
+  // Also check existing assets on GitHub release for signatures
+  if (existingRelease && existingRelease.assets) {
+    const winExeAsset = existingRelease.assets.find(
+      (a) => (a.name.toLowerCase().endsWith(".exe") || a.name.toLowerCase().endsWith(".zip")) && matchesExactVersion(a.name, version)
+    );
+    const winSigAsset = existingRelease.assets.find(
+      (a) => (a.name.toLowerCase().endsWith(".exe.sig") || a.name.toLowerCase().endsWith(".zip.sig")) && matchesExactVersion(a.name, version)
+    );
+    if (winExeAsset && winSigAsset && !remotePlatforms["windows-x86_64"]) {
+      try {
+        const sigRes = await fetch(winSigAsset.browser_download_url);
+        if (sigRes.ok) {
+          const sigText = (await sigRes.text()).trim();
+          remotePlatforms["windows-x86_64"] = {
+            signature: sigText,
+            url: winExeAsset.browser_download_url,
+          };
+          remotePlatforms["windows"] = {
+            signature: sigText,
+            url: winExeAsset.browser_download_url,
+          };
+          remotePlatforms["windows-x64"] = {
+            signature: sigText,
+            url: winExeAsset.browser_download_url,
+          };
+          console.log("📥 Detected & linked remote Windows binary from GitHub release");
+        }
+      } catch (err) {
+        console.warn("Could not fetch remote windows signature:", err.message);
+      }
+    }
+  }
+
+  // Construct and merge platforms
+  const platforms = { ...remotePlatforms };
+
+  // Local Windows Binaries Detection
+  const winExe = filesToUpload.find(
+    (f) => (f.name.toLowerCase().endsWith(".exe") || f.name.toLowerCase().endsWith(".zip")) && matchesExactVersion(f.name, version)
+  );
+  const winSig = filesToUpload.find(
+    (f) => (f.name.toLowerCase().endsWith(".exe.sig") || f.name.toLowerCase().endsWith(".zip.sig")) && matchesExactVersion(f.name, version)
+  );
   if (winExe && winSig) {
+    const winSigContent = fs.readFileSync(winSig.path, "utf-8").trim();
+    const winUrl = `https://github.com/${owner}/${repo}/releases/download/${tagName}/${encodeURIComponent(winExe.name)}`;
+
     platforms["windows-x86_64"] = {
-      signature: fs.readFileSync(winSig.path, "utf-8").trim(),
-      url: `https://github.com/${owner}/${repo}/releases/download/${tagName}/${encodeURIComponent(winExe.name)}`,
+      signature: winSigContent,
+      url: winUrl,
+    };
+    platforms["windows"] = {
+      signature: winSigContent,
+      url: winUrl,
+    };
+    platforms["windows-x64"] = {
+      signature: winSigContent,
+      url: winUrl,
     };
   }
 
-  const linuxAppImage = filesToUpload.find((f) => f.name.endsWith(".AppImage") && f.name.includes(version));
-  const linuxSig = filesToUpload.find((f) => f.name.endsWith(".AppImage.sig") && f.name.includes(version));
+  // Local Linux Binaries Detection (AppImage, deb, rpm, tar.gz)
+  const linuxAppImage = filesToUpload.find(
+    (f) => f.name.toLowerCase().endsWith(".appimage") && matchesExactVersion(f.name, version)
+  );
+  const linuxSig = filesToUpload.find(
+    (f) => f.name.toLowerCase().endsWith(".appimage.sig") && matchesExactVersion(f.name, version)
+  );
+
   if (linuxAppImage && linuxSig) {
+    const linuxSigContent = fs.readFileSync(linuxSig.path, "utf-8").trim();
+    const linuxUrl = `https://github.com/${owner}/${repo}/releases/download/${tagName}/${encodeURIComponent(linuxAppImage.name)}`;
+
     platforms["linux-x86_64"] = {
-      signature: fs.readFileSync(linuxSig.path, "utf-8").trim(),
-      url: `https://github.com/${owner}/${repo}/releases/download/${tagName}/${encodeURIComponent(linuxAppImage.name)}`,
+      signature: linuxSigContent,
+      url: linuxUrl,
     };
+    platforms["linux"] = {
+      signature: linuxSigContent,
+      url: linuxUrl,
+    };
+    platforms["linux-amd64"] = {
+      signature: linuxSigContent,
+      url: linuxUrl,
+    };
+  } else {
+    // Fallback to .deb or .rpm
+    const linuxPkg = filesToUpload.find(
+      (f) => (f.name.toLowerCase().endsWith(".deb") || f.name.toLowerCase().endsWith(".rpm")) && matchesExactVersion(f.name, version)
+    );
+    const linuxPkgSig = filesToUpload.find(
+      (f) => (f.name.toLowerCase().endsWith(".deb.sig") || f.name.toLowerCase().endsWith(".rpm.sig")) && matchesExactVersion(f.name, version)
+    );
+    if (linuxPkg && linuxPkgSig) {
+      const pkgSigContent = fs.readFileSync(linuxPkgSig.path, "utf-8").trim();
+      const pkgUrl = `https://github.com/${owner}/${repo}/releases/download/${tagName}/${encodeURIComponent(linuxPkg.name)}`;
+
+      platforms["linux-x86_64"] = {
+        signature: pkgSigContent,
+        url: pkgUrl,
+      };
+      platforms["linux"] = {
+        signature: pkgSigContent,
+        url: pkgUrl,
+      };
+    }
   }
 
   const generatedManifest = {
@@ -218,33 +349,21 @@ async function main() {
   // Add the fresh latest.json to upload list
   filesToUpload.push({ name: "latest.json", path: manifestPath });
   console.log("✨ Generated fresh latest.json update manifest for v" + version);
+  console.log("📋 Platforms included in latest.json:", Object.keys(platforms).join(", ") || "(none)");
 
-  console.log(`\nFound ${filesToUpload.length} release artifact(s) ready to publish:`);
+  console.log(`\nFound ${filesToUpload.length} release artifact(s) for v${version} ready to publish:`);
   for (const f of filesToUpload) {
     const sizeMb = (fs.statSync(f.path).size / (1024 * 1024)).toFixed(2);
     console.log(`  - ${f.name} (${sizeMb} MB)`);
   }
   console.log("");
 
-  const headers = {
-    Authorization: `Bearer ${GITHUB_TOKEN}`,
-    Accept: "application/vnd.github+json",
-    "User-Agent": "RetailSathi-ReleaseTool",
-  };
-
-  // 1. Create or Update GitHub Release
-  console.log(`🔍 Checking release ${tagName} on GitHub...`);
+  // 2. Create or Update GitHub Release
   let release = null;
-  const getRelRes = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tagName}`,
-    { headers }
-  );
-
-  if (getRelRes.ok) {
-    const existing = await getRelRes.json();
+  if (existingRelease) {
     console.log(`Updating existing release ${tagName}...`);
     const updateRelRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/releases/${existing.id}`,
+      `https://api.github.com/repos/${owner}/${repo}/releases/${existingRelease.id}`,
       {
         method: "PATCH",
         headers: { ...headers, "Content-Type": "application/json" },
@@ -256,7 +375,7 @@ async function main() {
         }),
       }
     );
-    release = updateRelRes.ok ? await updateRelRes.json() : existing;
+    release = updateRelRes.ok ? await updateRelRes.json() : existingRelease;
     console.log(`✅ Release updated: ${release.html_url}`);
   } else {
     console.log(`Creating new release for ${tagName}...`);
@@ -286,14 +405,31 @@ async function main() {
     console.log(`✅ Created release: ${release.html_url}`);
   }
 
-  // 2. Upload assets
+  // 3. Clean out only older/stale version assets (do NOT delete same-version assets of other OS)
+  if (release.assets && release.assets.length > 0) {
+    for (const asset of release.assets) {
+      if (asset.name !== "latest.json" && !matchesExactVersion(asset.name, version)) {
+        console.log(`🗑️  Purging older version asset #${asset.id} (${asset.name}) from release...`);
+        try {
+          await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/releases/assets/${asset.id}`,
+            { method: "DELETE", headers }
+          );
+        } catch (delErr) {
+          console.warn(`   Could not delete asset ${asset.name}:`, delErr.message);
+        }
+      }
+    }
+  }
+
+  // 4. Upload current version assets
   const uploadUrlTemplate = release.upload_url.split("{")[0];
 
   for (const file of filesToUpload) {
     console.log(`⬆️  Uploading ${file.name}...`);
     const fileBuffer = fs.readFileSync(file.path);
 
-    // Delete existing asset if it exists to allow re-upload
+    // Delete existing asset if it exists to allow clean re-upload
     const existingAsset = (release.assets || []).find((a) => a.name === file.name);
     if (existingAsset) {
       console.log(`   Replacing older asset #${existingAsset.id} (${file.name})...`);
@@ -325,6 +461,7 @@ async function main() {
   console.log("🎉 PROFESSIONAL RELEASE PUBLISHED!");
   console.log(`📌 Title: ${releaseTitle}`);
   console.log(`🔗 Link:  ${release.html_url}`);
+  console.log(`📋 Platforms in latest.json: ${Object.keys(platforms).join(", ")}`);
   console.log("=========================================\n");
 }
 

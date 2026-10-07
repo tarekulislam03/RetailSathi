@@ -2,6 +2,12 @@ import React, { useState, useEffect } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 
+export function triggerUpdateCheck() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("check-app-updates"));
+  }
+}
+
 export const UpdateChecker: React.FC = () => {
   const [updateAvailable, setUpdateAvailable] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
@@ -11,6 +17,14 @@ export const UpdateChecker: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   async function checkForUpdates(silent = true) {
+    // Only check if running inside Tauri native window
+    if (typeof window !== "undefined" && !("__TAURI_INTERNALS__" in window)) {
+      if (!silent) {
+        alert("Running in web browser mode. Auto-updater is available in the desktop application.");
+      }
+      return;
+    }
+
     try {
       console.log("[Updater] Checking for updates...");
       const update = await check();
@@ -30,6 +44,10 @@ export const UpdateChecker: React.FC = () => {
   }
 
   useEffect(() => {
+    // Listen for manual trigger from UI buttons
+    const handleManualCheck = () => checkForUpdates(false);
+    window.addEventListener("check-app-updates", handleManualCheck);
+
     // Check for updates on startup (after 3 seconds)
     const startupTimer = setTimeout(() => {
       checkForUpdates(true);
@@ -41,6 +59,7 @@ export const UpdateChecker: React.FC = () => {
     }, 2 * 60 * 60 * 1000);
 
     return () => {
+      window.removeEventListener("check-app-updates", handleManualCheck);
       clearTimeout(startupTimer);
       clearInterval(interval);
     };

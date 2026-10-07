@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Sale } from "../../billing/types";
 import { Pagination } from "../../../components/common/Pagination";
 
@@ -24,6 +25,7 @@ export const ManageGstModal: React.FC<ManageGstModalProps> = ({
   onClose,
   sales,
 }) => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -263,8 +265,20 @@ export const ManageGstModal: React.FC<ManageGstModalProps> = ({
 
           <div
             className="form-actions"
-            style={{ marginTop: "14px", justifyContent: "flex-end" }}
+            style={{ marginTop: "14px", justifyContent: "space-between", alignItems: "center" }}
           >
+            <button
+              type="button"
+              className="btn primary-btn"
+              onClick={() => {
+                onClose();
+                navigate("/gst-report");
+              }}
+              style={{ fontWeight: 700 }}
+            >
+              📊 Full GST & Stock In/Out Report (Excel & PDF)
+            </button>
+
             <button className="btn secondary-btn" onClick={onClose}>
               Close Report
             </button>

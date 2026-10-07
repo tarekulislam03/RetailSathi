@@ -208,6 +208,7 @@ export const UsersPage: React.FC = () => {
                 <th>Full Name</th>
                 <th>Username</th>
                 <th>Role</th>
+                <th>Store</th>
                 <th>Phone</th>
                 <th>Status</th>
                 <th>Created Date</th>
@@ -217,13 +218,13 @@ export const UsersPage: React.FC = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="loading">
+                  <td colSpan={9} className="loading">
                     Loading users database...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="empty-state">
+                  <td colSpan={9} className="empty-state">
                     {searchQuery
                       ? "No matching user accounts found."
                       : "No user accounts recorded in database yet."}
@@ -247,6 +248,17 @@ export const UsersPage: React.FC = () => {
                         <span className={`sidebar-role-badge role-${u.role}`}>
                           {u.role.toUpperCase()}
                         </span>
+                      </td>
+                      <td>
+                        {u.store_name ? (
+                          <span style={{ fontWeight: 500, color: "#1e40af" }}>
+                            {u.store_name}
+                          </span>
+                        ) : (
+                          <span style={{ color: "#94a3b8", fontStyle: "italic", fontSize: "0.8rem" }}>
+                            Main / All
+                          </span>
+                        )}
                       </td>
                       <td>{u.phone || "—"}</td>
                       <td>

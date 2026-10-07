@@ -1,6 +1,8 @@
 import React, { useState, FormEvent, KeyboardEvent } from "react";
 import { Product, ProductInput } from "../types";
 
+import { generateUniqueBarcode } from "../../../utils/barcodeGenerator";
+
 interface ProductModalProps {
   editingProduct: Product | null;
   onSave: (payload: ProductInput) => Promise<void>;
@@ -17,6 +19,9 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   const [batchNo, setBatchNo] = useState(editingProduct?.batch_no || "");
   const [mrp, setMrp] = useState(editingProduct?.mrp ? editingProduct.mrp.toString() : "");
   const [price, setPrice] = useState(editingProduct?.price ? editingProduct.price.toString() : "");
+  const [costPrice, setCostPrice] = useState(
+    editingProduct?.cost_price ? editingProduct.cost_price.toString() : ""
+  );
   const [stock, setStock] = useState(editingProduct?.stock ? editingProduct.stock.toString() : "");
   const [hsnCode, setHsnCode] = useState(editingProduct?.hsn_code || "");
   const [reorderThreshold, setReorderThreshold] = useState(
@@ -70,13 +75,16 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       return;
     }
 
+    const finalBarcode = barcode.trim() || generateUniqueBarcode();
+
     try {
       await onSave({
-        barcode: barcode.trim(),
+        barcode: finalBarcode,
         name: name.trim(),
         batch_no: batchNo.trim(),
         mrp: mrpNum,
         price: priceNum,
+        cost_price: parseFloat(costPrice) || 0,
         stock: stockNum,
         hsn_code: hsnCode.trim(),
         reorder_threshold: reorderNum,
@@ -191,6 +199,19 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           </div>
 
           <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="costPrice">Cost Price (₹)</label>
+              <input
+                id="costPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+
             <div className="form-group">
               <label htmlFor="stock">Stock Qty *</label>
               <input

@@ -247,6 +247,7 @@ export const BillingPage: React.FC = () => {
         <ReceiptModal
           sale={completedSale}
           onClose={() => setCompletedSale(null)}
+          autoPrint={false}
         />
       )}
     </>

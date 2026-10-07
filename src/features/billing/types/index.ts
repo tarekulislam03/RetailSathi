@@ -33,6 +33,7 @@ export interface SaleItem {
   price: number;
   quantity: number;
   total_price: number;
+  mrp?: number;
 }
 
 export interface CreateSaleInput {

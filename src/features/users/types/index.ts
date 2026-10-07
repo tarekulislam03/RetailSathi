@@ -7,6 +7,8 @@ export interface User {
   full_name: string;
   role: UserRole;
   phone?: string | null;
+  store_id?: number | null;
+  store_name?: string | null;
   is_active: number | boolean;
   created_at?: string;
   updated_at?: string;
@@ -18,6 +20,7 @@ export interface CreateUserInput {
   full_name: string;
   role: UserRole;
   phone?: string;
+  store_id?: number | null;
   is_active?: boolean;
 }
 
@@ -26,6 +29,7 @@ export interface UpdateUserInput {
   password?: string;
   role?: UserRole;
   phone?: string;
+  store_id?: number | null;
   is_active?: boolean;
 }
 

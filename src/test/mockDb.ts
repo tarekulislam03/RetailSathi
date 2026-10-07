@@ -7,6 +7,43 @@ export function createMockDatabase() {
 
   // Initialize in-memory database schema
   sqliteDb.exec(`
+    CREATE TABLE IF NOT EXISTS stores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      code TEXT UNIQUE,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      setup_cost REAL DEFAULT 0,
+      amc REAL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      upi_id TEXT,
+      upi_name TEXT,
+      gstin TEXT,
+      receipt_footer TEXT,
+      paper_width INTEGER DEFAULT 80,
+      default_printer TEXT,
+      show_barcode INTEGER DEFAULT 1,
+      show_upi_qr INTEGER DEFAULT 1,
+      tagline TEXT,
+      promo_text TEXT,
+      fssai TEXT,
+      logo_url TEXT,
+      return_policy TEXT,
+      show_header INTEGER DEFAULT 1,
+      show_customer INTEGER DEFAULT 1,
+      show_savings INTEGER DEFAULT 1,
+      show_tax INTEGER DEFAULT 1,
+      show_return_policy INTEGER DEFAULT 1,
+      mandatory_bill_note INTEGER DEFAULT 1,
+      barcode_printer TEXT,
+      label_width_mm INTEGER DEFAULT 50,
+      label_height_mm INTEGER DEFAULT 30,
+      label_gap_mm INTEGER DEFAULT 3,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -14,9 +51,11 @@ export function createMockDatabase() {
       full_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'cashier',
       phone TEXT,
+      store_id INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS products (

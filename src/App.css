@@ -719,7 +719,9 @@ html, body {
   border-bottom: none;
 }
 
-.dropdown-item:hover {
+.dropdown-item:hover,
+.dropdown-item.active,
+.dropdown-item.selected {
   background: linear-gradient(to bottom, #edf5fe 0%, #d2e4fc 100%);
 }
 
@@ -1915,6 +1917,131 @@ html, body {
   line-height: 1.3;
 }
 
+/* Settings Page Scrollbar */
+.settings-page-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+}
 
+.settings-page-wrapper::-webkit-scrollbar {
+  width: 8px;
+}
 
+.settings-page-wrapper::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.settings-page-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.settings-page-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==========================================================================
+   80mm Thermal Receipt Print Styles (@media print)
+   ========================================================================== */
+@media print {
+  body, html {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .sidebar,
+  .sidebar-user-footer,
+  .top-navbar,
+  .modal-backdrop > *:not(.modal-content),
+  .modal-header,
+  .modal-content > *:not(.receipt-body):not(.thermal-receipt-paper),
+  .form-actions,
+  .pos-layout,
+  button {
+    display: none !important;
+  }
+
+  .modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .modal-content {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .thermal-receipt-paper {
+    width: 76mm !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 2mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    font-size: 11pt !important;
+    color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+
+  @page {
+    size: 80mm auto;
+    margin: 0mm;
+  }
+}
+
+/* GST Report Scrollable Container & Scrollbars */
+.gst-report-container {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.gst-report-container::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.gst-report-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.gst-report-container::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
+
+.gst-report-container::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.gst-report-container .table-responsive {
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.gst-report-container .table-responsive::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.gst-report-container .table-responsive::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.gst-report-container .table-responsive::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 4px;
+}
 

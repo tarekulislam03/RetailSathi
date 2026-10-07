@@ -5,6 +5,8 @@ let dbInstance: Database | null = null;
 let rawExecuteFn: ((query: string, bindValues?: unknown[]) => Promise<QueryResult>) | null = null;
 
 const SYNC_TABLES = new Set([
+  "stores",
+  "settings",
   "users",
   "products",
   "sales",
@@ -176,6 +178,34 @@ async function initTables(db: Database) {
     );
   `);
 
+  // Stores table
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS stores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      code TEXT UNIQUE,
+      address TEXT,
+      phone TEXT,
+      email TEXT,
+      setup_cost REAL DEFAULT 0,
+      amc REAL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Settings table (per-store key/value; synced to cloud, source of truth for receipts)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS settings (
+      store_id INTEGER NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT,
+      updated_ms INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (store_id, key)
+    );
+  `);
+
   // Users table (offline auth credentials & role management)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
@@ -185,9 +215,11 @@ async function initTables(db: Database) {
       full_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'cashier',
       phone TEXT,
+      store_id INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL
     );
   `);
 
@@ -338,6 +370,32 @@ async function initTables(db: Database) {
     "ALTER TABLE customers ADD COLUMN purchase_item_id INTEGER",
     "ALTER TABLE customers ADD COLUMN loyalty_points REAL DEFAULT 0",
     "ALTER TABLE customers ADD COLUMN dues REAL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN store_id INTEGER",
+    "ALTER TABLE stores ADD COLUMN setup_cost REAL DEFAULT 0",
+    "ALTER TABLE stores ADD COLUMN amc REAL DEFAULT 0",
+    "ALTER TABLE stores ADD COLUMN upi_id TEXT",
+    "ALTER TABLE stores ADD COLUMN upi_name TEXT",
+    "ALTER TABLE stores ADD COLUMN gstin TEXT",
+    "ALTER TABLE stores ADD COLUMN receipt_footer TEXT",
+    "ALTER TABLE stores ADD COLUMN paper_width INTEGER DEFAULT 80",
+    "ALTER TABLE stores ADD COLUMN default_printer TEXT",
+    "ALTER TABLE stores ADD COLUMN show_barcode INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN show_upi_qr INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN tagline TEXT",
+    "ALTER TABLE stores ADD COLUMN promo_text TEXT",
+    "ALTER TABLE stores ADD COLUMN fssai TEXT",
+    "ALTER TABLE stores ADD COLUMN logo_url TEXT",
+    "ALTER TABLE stores ADD COLUMN return_policy TEXT",
+    "ALTER TABLE stores ADD COLUMN show_header INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN show_customer INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN show_savings INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN show_tax INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN show_return_policy INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN mandatory_bill_note INTEGER DEFAULT 1",
+    "ALTER TABLE stores ADD COLUMN barcode_printer TEXT",
+    "ALTER TABLE stores ADD COLUMN label_width_mm REAL DEFAULT 50",
+    "ALTER TABLE stores ADD COLUMN label_height_mm REAL DEFAULT 30",
+    "ALTER TABLE stores ADD COLUMN label_gap_mm REAL DEFAULT 3",
   ];
 
   for (const query of alterQueries) {

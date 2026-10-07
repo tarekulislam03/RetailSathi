@@ -30,6 +30,23 @@ if (!process.env.TAURI_SIGNING_PRIVATE_KEY) {
   }
 }
 
+// Automatically clean old bundle outputs before building to avoid mixing old versions
+const bundleDirsToClean = [
+  path.join(rootDir, "src-tauri", "target", "release", "bundle"),
+  path.join(rootDir, "src-tauri", "target", "x86_64-pc-windows-gnu", "release", "bundle"),
+];
+
+for (const dir of bundleDirsToClean) {
+  if (fs.existsSync(dir)) {
+    console.log(`🧹 Cleaning previous bundle output: ${path.relative(rootDir, dir)}`);
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (e) {
+      console.warn(`Could not clean ${dir}:`, e.message);
+    }
+  }
+}
+
 const extraArgs = process.argv.slice(2);
 console.log("🔨 Starting signed Tauri build for Retail Sathi...", extraArgs.join(" "));
 const child = spawn("npx", ["tauri", "build", ...extraArgs], {

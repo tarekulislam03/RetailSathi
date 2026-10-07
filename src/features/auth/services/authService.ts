@@ -54,7 +54,10 @@ export async function authenticate(
 
     // 1. Query local users table
     let rows = await db.select<User[]>(
-      "SELECT * FROM users WHERE LOWER(username) = $1 AND is_active = 1",
+      `SELECT u.*, s.name AS store_name 
+       FROM users u 
+       LEFT JOIN stores s ON u.store_id = s.id 
+       WHERE LOWER(u.username) = $1 AND u.is_active = 1`,
       [cleanUsername]
     );
 
@@ -63,7 +66,10 @@ export async function authenticate(
       try {
         await pullUsersFromCloud();
         rows = await db.select<User[]>(
-          "SELECT * FROM users WHERE LOWER(username) = $1 AND is_active = 1",
+          `SELECT u.*, s.name AS store_name 
+           FROM users u 
+           LEFT JOIN stores s ON u.store_id = s.id 
+           WHERE LOWER(u.username) = $1 AND u.is_active = 1`,
           [cleanUsername]
         );
       } catch (pullErr) {
@@ -94,6 +100,8 @@ export async function authenticate(
       full_name: matchedUser.full_name,
       role: matchedUser.role,
       phone: matchedUser.phone,
+      store_id: matchedUser.store_id || null,
+      store_name: matchedUser.store_name || null,
       is_active: true,
       created_at: matchedUser.created_at,
     };

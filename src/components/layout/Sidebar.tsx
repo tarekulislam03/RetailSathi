@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../features/auth/context/AuthContext";
+import { triggerUpdateCheck } from "../common/UpdateChecker";
 
 export const Sidebar: React.FC = () => {
   const { user, isAdmin, logout } = useAuth();
@@ -26,16 +27,7 @@ export const Sidebar: React.FC = () => {
                 `nav-item ${isActive ? "active" : ""}`
               }
             >
-              <span className="nav-label">Inventory</span>
-            </NavLink>
-
-            <NavLink
-              to="/purchases"
-              className={({ isActive }) =>
-                `nav-item ${isActive ? "active" : ""}`
-              }
-            >
-              <span className="nav-label">Purchases</span>
+              <span className="nav-label">Inventory & Stock</span>
             </NavLink>
 
             <NavLink
@@ -48,12 +40,21 @@ export const Sidebar: React.FC = () => {
             </NavLink>
 
             <NavLink
+              to="/purchases"
+              className={({ isActive }) =>
+                `nav-item ${isActive ? "active" : ""}`
+              }
+            >
+              <span className="nav-label">Purchases & Inward</span>
+            </NavLink>
+
+            <NavLink
               to="/customers"
               className={({ isActive }) =>
                 `nav-item ${isActive ? "active" : ""}`
               }
             >
-              <span className="nav-label">Customers</span>
+              <span className="nav-label">Customers & Loyalty</span>
             </NavLink>
 
             <NavLink
@@ -66,12 +67,21 @@ export const Sidebar: React.FC = () => {
             </NavLink>
 
             <NavLink
+              to="/gst-report"
+              className={({ isActive }) =>
+                `nav-item ${isActive ? "active" : ""}`
+              }
+            >
+              <span className="nav-label">GST Reports</span>
+            </NavLink>
+
+            <NavLink
               to="/marketing"
               className={({ isActive }) =>
                 `nav-item ${isActive ? "active" : ""}`
               }
             >
-              <span className="nav-label">Marketing</span>
+              <span className="nav-label">Marketing & Delivery</span>
             </NavLink>
 
             <NavLink
@@ -81,6 +91,15 @@ export const Sidebar: React.FC = () => {
               }
             >
               <span className="nav-label">Users / Cashiers</span>
+            </NavLink>
+
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                `nav-item ${isActive ? "active" : ""}`
+              }
+            >
+              <span className="nav-label">Store & POS Settings</span>
             </NavLink>
           </>
         )}
@@ -140,6 +159,37 @@ export const Sidebar: React.FC = () => {
             </svg>
             <span>Logout</span>
           </button>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginTop: "8px",
+              paddingTop: "6px",
+              borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+              fontSize: "0.72rem",
+              color: "#94a3b8",
+            }}
+          >
+            <span>Retail Sathi v0.1.1</span>
+            <button
+              type="button"
+              onClick={triggerUpdateCheck}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#60a5fa",
+                cursor: "pointer",
+                padding: "2px 4px",
+                fontSize: "0.72rem",
+                textDecoration: "underline",
+              }}
+              title="Check for online software updates"
+            >
+              Check Updates
+            </button>
+          </div>
         </div>
       )}
     </aside>

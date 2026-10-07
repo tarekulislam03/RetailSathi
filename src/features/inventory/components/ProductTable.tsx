@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Product } from "../types";
 import { getBatchStatusMap } from "../utils/batchUtils";
 import { Pagination } from "../../../components/common/Pagination";
+import { PrintLabelModal } from "./PrintLabelModal";
 
 interface ProductTableProps {
   products: Product[];
@@ -18,6 +19,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [labelProduct, setLabelProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -83,6 +85,23 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                   <td>
                     <div className="action-buttons">
                       <button
+                        className="btn-icon"
+                        style={{
+                          background: "#f0fdf4",
+                          color: "#166534",
+                          border: "1px solid #bbf7d0",
+                          padding: "4px 8px",
+                          borderRadius: "4px",
+                          fontWeight: 600,
+                          fontSize: "0.78rem",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => setLabelProduct(item)}
+                        title="Print Barcode Label (TSPL)"
+                      >
+                        🏷️ Label
+                      </button>
+                      <button
                         className="btn-icon edit-btn"
                         onClick={() => onEdit(item)}
                         title="Edit"
@@ -113,6 +132,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({
         onPageChange={setCurrentPage}
         onPageSizeChange={setPageSize}
       />
+
+      {labelProduct && (
+        <PrintLabelModal
+          product={labelProduct}
+          onClose={() => setLabelProduct(null)}
+        />
+      )}
     </>
   );
 };
