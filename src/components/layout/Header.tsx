@@ -70,7 +70,8 @@ export const Header: React.FC = () => {
         </div>
 
         <div className="header-support-notice">
-          If you faced any issue or problem, please send me the image of the problem along with a voice message to this number <strong>8101402916</strong>
+          <span>Support: If you face any issue, send a photo & voice note to WhatsApp </span>
+          <strong style={{ color: "#166534", background: "#dcfce7", padding: "1px 6px", borderRadius: "4px", border: "1px solid #86efac", letterSpacing: "0.5px" }}>8101402916</strong>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>

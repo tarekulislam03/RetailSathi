@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { APP_DISPLAY_VERSION } from "../../../constants/version";
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -217,8 +218,11 @@ export const LoginPage: React.FC = () => {
             </div>
           </form>
 
-          <div className="login-support-note">
-            Offline database authentication enabled. Cashier and Admin credentials sync across counters.
+          <div className="login-support-note" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>Offline database enabled. Cross-counter sync active.</span>
+            <span style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600, background: "#f1f5f9", padding: "1px 6px", borderRadius: "4px" }}>
+              {APP_DISPLAY_VERSION}
+            </span>
           </div>
         </div>
       </div>

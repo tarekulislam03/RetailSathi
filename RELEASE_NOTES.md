@@ -1,11 +1,11 @@
-# Retail Sathi v0.1.6 - Production Stability Release
+# Retail Sathi v0.1.7 - UI & Versioning Enhancements
 
 ### 🚀 What's New & Improvements
-- **Resolved Blank Screen in Production**: Injected production environment configuration into the release pipeline and added resilient fallback credentials for cloud synchronization.
-- **Automated Release Notes**: GitHub Releases and auto-update manifests now properly populate comprehensive changelogs from `RELEASE_NOTES.md`.
-- **Application Error Boundary**: Added crash-safe error diagnostics and restart actions to prevent silent UI failures.
-- **Window Capability Synchronization**: Explicitly aligned the primary window identifier with Tauri capabilities.
-- **Real-Time POS Counter & Sync**: Daily completed bills counter on POS search header and optimized cross-terminal sync.
+- **Bottom-Left Dynamic Versioning**: Synchronized software version indicator in the bottom-left sidebar with a live status badge and single source of truth.
+- **Enhanced Sidebar Footer**: Polished updates button with instant visual feedback and streamlined layout.
+- **Login Screen Version Tag**: Displayed active software build on the cashier sign-in screen for easy verification.
+- **Header Support Notice**: Highlighted WhatsApp support contact details with clear formatting for quick cashier assistance.
+- **Production Pipeline Integrity**: Automated release notes extraction and production environment provisioning.
 
 ---
 *Retail Sathi Automatic Online Update System*

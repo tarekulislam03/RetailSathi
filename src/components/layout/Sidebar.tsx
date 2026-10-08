@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../features/auth/context/AuthContext";
 import { triggerUpdateCheck } from "../common/UpdateChecker";
+import { APP_DISPLAY_VERSION } from "../../constants/version";
 
 export const Sidebar: React.FC = () => {
   const { user, isAdmin, logout } = useAuth();
@@ -167,27 +168,78 @@ export const Sidebar: React.FC = () => {
               alignItems: "center",
               marginTop: "8px",
               paddingTop: "6px",
-              borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+              borderTop: "1px solid #c5d7ea",
               fontSize: "0.72rem",
-              color: "#94a3b8",
             }}
           >
-            <span>Retail Sathi v0.1.1</span>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "#e3effc",
+                border: "1px solid #b3cde8",
+                padding: "2px 7px",
+                borderRadius: "10px",
+                fontWeight: 700,
+                color: "#0f3e6d",
+                fontSize: "0.70rem",
+                letterSpacing: "0.01em",
+              }}
+              title={`Retail Sathi ${APP_DISPLAY_VERSION}`}
+            >
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#16a34a",
+                  display: "inline-block",
+                  boxShadow: "0 0 4px #22c55e",
+                }}
+              />
+              <span>Retail Sathi {APP_DISPLAY_VERSION}</span>
+            </div>
+
             <button
               type="button"
               onClick={triggerUpdateCheck}
               style={{
-                background: "transparent",
-                border: "none",
-                color: "#60a5fa",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                background: "linear-gradient(to bottom, #f7faff 0%, #e1eefc 100%)",
+                border: "1px solid #7092be",
+                color: "#0f3e6d",
                 cursor: "pointer",
-                padding: "2px 4px",
-                fontSize: "0.72rem",
-                textDecoration: "underline",
+                padding: "2px 7px",
+                borderRadius: "3px",
+                fontSize: "0.70rem",
+                fontWeight: 600,
+                boxShadow: "inset 0 1px 0 #ffffff, 0 1px 2px rgba(0,0,0,0.06)",
+                transition: "all 0.15s ease",
               }}
-              title="Check for online software updates"
+              title="Check for software updates"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "linear-gradient(to bottom, #ffffff 0%, #ebf4fe 100%)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "linear-gradient(to bottom, #f7faff 0%, #e1eefc 100%)";
+              }}
             >
-              Check Updates
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+              <span>Updates</span>
             </button>
           </div>
         </div>
