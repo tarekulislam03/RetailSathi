@@ -1,10 +1,33 @@
 import { createClient } from "@supabase/supabase-js";
 import { getDb, rawExecute } from "./database";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const DEFAULT_SUPABASE_URL = "https://sfbzeehmjrarhprpagxy.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmYnplZWhtanJhcmhwcnBhZ3h5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODk0NjMsImV4cCI6MjEwNDk2NTQ2M30.lENrO2VCCGEAEuiuOEB1JCzKiFDcV8fY6Nn49Pw-Cto";
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL || "").trim();
+const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY || "").trim();
+
+export const isCloudSyncConfigured = Boolean(
+  rawUrl &&
+  rawKey &&
+  rawUrl.startsWith("http") &&
+  !rawUrl.includes("your-project-ref")
+);
+
+const supabaseUrl = isCloudSyncConfigured ? rawUrl : "https://placeholder.supabase.co";
+const supabaseAnonKey = isCloudSyncConfigured ? rawKey : "placeholder-anon-key";
+
+function initSupabase() {
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey);
+  } catch (err) {
+    console.warn("[SyncProcessor] Failed to create Supabase client:", err);
+    return createClient("https://placeholder.supabase.co", "placeholder-key");
+  }
+}
+
+export const supabase = initSupabase();
 
 let isProcessing = false;
 let isPulling = false;
@@ -16,6 +39,7 @@ let syncTimeout: any = null;
  */
 export async function processSyncJobs(): Promise<void> {
   if (isProcessing) return;
+  if (!isCloudSyncConfigured) return;
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return;
@@ -500,6 +524,7 @@ export function notifyDbUpdated(table = "all"): void {
  */
 export async function pullDataFromCloud(): Promise<void> {
   if (isPulling) return;
+  if (!isCloudSyncConfigured) return;
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return;
   }

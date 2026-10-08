@@ -1,11 +1,11 @@
-# Retail Sathi v0.1.5 - Multiplatform Release
+# Retail Sathi v0.1.6 - Production Stability Release
 
 ### 🚀 What's New & Improvements
-- **CI / CD Signing Key Sanitation**: Fixed automatic updater private signing key formatting in GitHub Actions build pipeline.
-- **Printer & Code Cleanup**: Cleaned up printer imports and streamlined build dependencies.
-- **Today's Bills Counter Badge**: Transaction counter on POS search header showing completed bills for today.
-- **Real-Time Synchronization**: Instant update of daily bill counts and live stock status across all cashier terminals.
-- **Performance Optimizations**: Faster barcode lookup and smoother cashier billing transitions.
+- **Resolved Blank Screen in Production**: Injected production environment configuration into the release pipeline and added resilient fallback credentials for cloud synchronization.
+- **Automated Release Notes**: GitHub Releases and auto-update manifests now properly populate comprehensive changelogs from `RELEASE_NOTES.md`.
+- **Application Error Boundary**: Added crash-safe error diagnostics and restart actions to prevent silent UI failures.
+- **Window Capability Synchronization**: Explicitly aligned the primary window identifier with Tauri capabilities.
+- **Real-Time POS Counter & Sync**: Daily completed bills counter on POS search header and optimized cross-terminal sync.
 
 ---
 *Retail Sathi Automatic Online Update System*

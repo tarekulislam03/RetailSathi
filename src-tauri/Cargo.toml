@@ -1,6 +1,6 @@
 [package]
 name = "retail-sathi"
-version = "0.1.5"
+version = "0.1.6"
 description = "This is a pos application for retail stores (eg. groccery store, supermarket)"
 authors = ["Tarekul Islam"]
 edition = "2021"
