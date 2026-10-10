@@ -406,3 +406,17 @@ pub fn print_raw_tspl(printer_name: Option<String>, tspl_string: String) -> Resu
     let bytes = tspl_string.into_bytes();
     print_raw_escpos(bytes, printer_name)
 }
+
+#[tauri::command]
+pub fn print_raw(printer_name: String, data: Vec<u8>) -> Result<String, String> {
+    if data.is_empty() {
+        return Err("No print data provided.".to_string());
+    }
+    let p_opt = if printer_name.trim().is_empty() {
+        None
+    } else {
+        Some(printer_name)
+    };
+    print_raw_escpos(data, p_opt)
+}
+

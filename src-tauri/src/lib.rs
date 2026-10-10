@@ -44,7 +44,8 @@ pub fn run() {
             save_report_file,
             printer::list_printers,
             printer::print_raw_escpos,
-            printer::print_raw_tspl
+            printer::print_raw_tspl,
+            printer::print_raw
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

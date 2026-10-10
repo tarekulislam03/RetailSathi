@@ -12,8 +12,10 @@ import {
 } from "../../../services/escposService";
 import {
   calibratePrinter,
-  printBarcodeLabel,
+  printTestLabel,
+  validateLabelSettings,
   saveLabelSettingsToStorage,
+  DEFAULT_LABEL_SETTINGS,
 } from "../../../services/tsplService";
 import { generateQrSvg, generateUpiUri } from "../../../utils/qrCodeGenerator";
 import { generateCode128Svg } from "../../../utils/code128";
@@ -64,12 +66,17 @@ export const SettingsPage: React.FC = () => {
   const [paperWidth, setPaperWidth] = useState<number>(80);
   const [showBarcode, setShowBarcode] = useState(true);
 
-  // Barcode Label Printer (TSPL) State
+  // Barcode Label Printer (DCode DC421 Pro TSPL) State
   const [barcodePrinter, setBarcodePrinter] = useState("");
   const [labelWidth, setLabelWidth] = useState<number>(50);
-  const [labelHeight, setLabelHeight] = useState<number>(30);
-  const [labelGap, setLabelGap] = useState<number>(3);
-  const [initialLabelDimensions, setInitialLabelDimensions] = useState({ w: 50, h: 30, g: 3 });
+  const [labelHeight, setLabelHeight] = useState<number>(25);
+  const [labelColumns, setLabelColumns] = useState<number>(2);
+  const [labelColumnGap, setLabelColumnGap] = useState<number>(2);
+  const [labelRowGap, setLabelRowGap] = useState<number>(2);
+  const [labelPadding, setLabelPadding] = useState<number>(2);
+  const [labelOffsetX, setLabelOffsetX] = useState<number>(0);
+  const [labelOffsetY, setLabelOffsetY] = useState<number>(0);
+  const [duplicateOdd, setDuplicateOdd] = useState<boolean>(false);
 
   // Testing & Calibration State
   const [testingPrint, setTestingPrint] = useState(false);
@@ -132,21 +139,32 @@ export const SettingsPage: React.FC = () => {
             "Thank you for shopping with us!\nPlease visit again!"
         );
 
-        // Barcode Label settings
+        // Barcode Label settings (DCode DC421 Pro TSPL)
         const loadedBPrinter =
           activeStore.barcode_printer ||
           (typeof localStorage !== "undefined"
             ? localStorage.getItem("selected_barcode_printer") || ""
             : "");
         const loadedW = activeStore.label_width_mm || 50;
-        const loadedH = activeStore.label_height_mm || 30;
-        const loadedG = activeStore.label_gap_mm !== undefined && activeStore.label_gap_mm !== null ? activeStore.label_gap_mm : 3;
+        const loadedH = activeStore.label_height_mm || 25;
+        const loadedCols = activeStore.label_columns || 2;
+        const loadedColGap = activeStore.label_column_gap_mm !== undefined && activeStore.label_column_gap_mm !== null ? activeStore.label_column_gap_mm : 2;
+        const loadedRowGap = activeStore.label_row_gap_mm !== undefined && activeStore.label_row_gap_mm !== null ? activeStore.label_row_gap_mm : (activeStore.label_gap_mm ?? 2);
+        const loadedPadding = activeStore.label_padding_mm !== undefined && activeStore.label_padding_mm !== null ? activeStore.label_padding_mm : 2;
+        const loadedOffX = activeStore.label_offset_x_dots ?? 0;
+        const loadedOffY = activeStore.label_offset_y_dots ?? 0;
+        const loadedDup = Boolean(activeStore.label_duplicate_odd);
 
         setBarcodePrinter(loadedBPrinter);
         setLabelWidth(loadedW);
         setLabelHeight(loadedH);
-        setLabelGap(loadedG);
-        setInitialLabelDimensions({ w: loadedW, h: loadedH, g: loadedG });
+        setLabelColumns(loadedCols);
+        setLabelColumnGap(loadedColGap);
+        setLabelRowGap(loadedRowGap);
+        setLabelPadding(loadedPadding);
+        setLabelOffsetX(loadedOffX);
+        setLabelOffsetY(loadedOffY);
+        setDuplicateOdd(loadedDup);
       }
     } catch (err: any) {
       setStatusMsg({
@@ -173,10 +191,18 @@ export const SettingsPage: React.FC = () => {
         throw new Error("No active store found to update.");
       }
 
-      const sizeChanged =
-        initialLabelDimensions.w !== labelWidth ||
-        initialLabelDimensions.h !== labelHeight ||
-        initialLabelDimensions.g !== labelGap;
+      const validation = validateLabelSettings({
+        labelWidthMm: labelWidth,
+        labelHeightMm: labelHeight,
+        columns: labelColumns,
+        columnGapMm: labelColumnGap,
+      });
+
+      if (!validation.valid) {
+        setStatusMsg({ type: "error", text: validation.error || "Invalid label dimensions." });
+        setSaving(false);
+        return;
+      }
 
       const res = await updateStore(store.id, {
         name: name.trim(),
@@ -206,7 +232,14 @@ export const SettingsPage: React.FC = () => {
         barcode_printer: barcodePrinter || null,
         label_width_mm: labelWidth,
         label_height_mm: labelHeight,
-        label_gap_mm: labelGap,
+        label_gap_mm: labelRowGap,
+        label_columns: labelColumns,
+        label_column_gap_mm: labelColumnGap,
+        label_row_gap_mm: labelRowGap,
+        label_padding_mm: labelPadding,
+        label_offset_x_dots: labelOffsetX,
+        label_offset_y_dots: labelOffsetY,
+        label_duplicate_odd: duplicateOdd,
       });
 
       if (!res.success) {
@@ -215,9 +248,15 @@ export const SettingsPage: React.FC = () => {
 
       saveLabelSettingsToStorage({
         printerName: barcodePrinter || undefined,
-        widthMm: labelWidth,
-        heightMm: labelHeight,
-        gapMm: labelGap,
+        labelWidthMm: labelWidth,
+        labelHeightMm: labelHeight,
+        columns: labelColumns,
+        columnGapMm: labelColumnGap,
+        rowGapMm: labelRowGap,
+        paddingMm: labelPadding,
+        offsetXDots: labelOffsetX,
+        offsetYDots: labelOffsetY,
+        duplicateOdd: duplicateOdd,
       });
 
       if (typeof localStorage !== "undefined") {
@@ -227,25 +266,9 @@ export const SettingsPage: React.FC = () => {
         localStorage.setItem("pos_paper_width", String(paperWidth));
       }
 
-      let extraMsg = "";
-      if (sizeChanged && barcodePrinter) {
-        try {
-          await calibratePrinter({
-            printerName: barcodePrinter,
-            widthMm: labelWidth,
-            heightMm: labelHeight,
-            gapMm: labelGap,
-          });
-          extraMsg = " & Label printer re-calibrated for new dimensions.";
-        } catch (calErr: any) {
-          console.warn("Auto-calibration on size change failed:", calErr);
-          extraMsg = " (Note: Auto-calibration failed: " + (calErr?.message || calErr) + ")";
-        }
-      }
-
       setStatusMsg({
         type: "success",
-        text: `✓ Store info & printer settings saved successfully!${extraMsg}`,
+        text: `✓ Store info & printer settings saved successfully!`,
       });
 
       await loadSettings();
@@ -261,19 +284,14 @@ export const SettingsPage: React.FC = () => {
 
   async function handleRecalibrate() {
     setCalibrating(true);
-    setStatusMsg({ type: "info", text: "Sending calibration sequence (SIZE/GAP/~T) to label printer..." });
+    setStatusMsg({ type: "info", text: "Sending AUTODETECT calibration sequence to label printer..." });
 
     try {
-      const res = await calibratePrinter({
-        printerName: barcodePrinter || undefined,
-        widthMm: labelWidth,
-        heightMm: labelHeight,
-        gapMm: labelGap,
-      });
+      const res = await calibratePrinter(barcodePrinter || undefined);
 
       setStatusMsg({
         type: "success",
-        text: `✓ ${res || "Printer gap sensor calibrated successfully!"}`,
+        text: `✓ ${res || "Printer gap/media sensor calibrated successfully!"}`,
       });
     } catch (err: any) {
       setStatusMsg({
@@ -287,22 +305,19 @@ export const SettingsPage: React.FC = () => {
 
   async function handleTestLabelPrint() {
     setTestingLabelPrint(true);
-    setStatusMsg({ type: "info", text: "Sending test barcode label to TSPL printer..." });
+    setStatusMsg({ type: "info", text: "Sending test label with border box to TSPL printer..." });
 
     try {
-      const sampleItem = {
-        name: "Amul Butter 500g Pack",
-        barcode: "8901234567890",
-        price: 260.0,
-        mrp: 290.0,
-        storeName: name.trim() || "Retail Sathi",
-      };
-
-      const res = await printBarcodeLabel(sampleItem, 1, {
+      const res = await printTestLabel({
         printerName: barcodePrinter || undefined,
-        widthMm: labelWidth,
-        heightMm: labelHeight,
-        gapMm: labelGap,
+        labelWidthMm: labelWidth,
+        labelHeightMm: labelHeight,
+        columns: labelColumns,
+        columnGapMm: labelColumnGap,
+        rowGapMm: labelRowGap,
+        paddingMm: labelPadding,
+        offsetXDots: labelOffsetX,
+        offsetYDots: labelOffsetY,
       });
 
       setStatusMsg({
@@ -955,209 +970,366 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 4: Barcode & Product Label Printer (TSPL) */}
+        {/* Section 4: Label Printer (DCode DC421 Pro TSPL) */}
         <div className="card" style={{ marginTop: "20px", padding: "20px" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              borderBottom: "1px solid #e2e8f0",
-              paddingBottom: "10px",
-              marginBottom: "16px",
-              flexWrap: "wrap",
-              gap: "10px",
-            }}
-          >
-            <div>
-              <h3 style={{ margin: 0, color: "#0f172a" }}>
-                🏷️ Barcode & Product Label Printer (TSPL / TSC)
-              </h3>
-              <p style={{ margin: "4px 0 0 0", fontSize: "0.85rem", color: "#64748b" }}>
-                Direct RAW print spooler passthrough for TSC and TSPL-compatible barcode thermal printers (No GDI rendering).
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                className="btn secondary-btn"
-                onClick={handleTestLabelOnPosPrinter}
-                disabled={testingPosLabelPrint}
-                title="Test print this barcode label on your POS thermal receipt printer without changing TSPL settings"
-                style={{ fontSize: "0.85rem", padding: "6px 12px", background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}
-              >
-                {testingPosLabelPrint ? "⏳ Printing..." : "🧾 Test on POS Thermal Printer"}
-              </button>
-              <button
-                type="button"
-                className="btn secondary-btn"
-                onClick={handleRecalibrate}
-                disabled={calibrating}
-                title="Send calibration command (~T) to re-align die-cut gap sensor"
-                style={{ fontSize: "0.85rem", padding: "6px 12px" }}
-              >
-                {calibrating ? "⏳ Calibrating..." : "🔄 Recalibrate (~T)"}
-              </button>
-              <button
-                type="button"
-                className="btn secondary-btn"
-                onClick={handleTestLabelPrint}
-                disabled={testingLabelPrint}
-                title="Send raw TSPL label to the configured Barcode Label printer"
-                style={{ fontSize: "0.85rem", padding: "6px 12px" }}
-              >
-                {testingLabelPrint ? "⏳ Printing..." : "🏷️ Test TSPL Label Print"}
-              </button>
-            </div>
-          </div>
+          {(() => {
+            const validation = validateLabelSettings({
+              labelWidthMm: labelWidth,
+              labelHeightMm: labelHeight,
+              columns: labelColumns,
+              columnGapMm: labelColumnGap,
+            });
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-            <div>
-              <div className="form-group" style={{ marginBottom: "14px" }}>
-                <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                  Barcode Label Printer
-                </label>
-                <select
-                  className="input-field"
-                  value={barcodePrinter}
-                  onChange={(e) => setBarcodePrinter(e.target.value)}
+            return (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    borderBottom: "1px solid #e2e8f0",
+                    paddingBottom: "10px",
+                    marginBottom: "16px",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                  }}
                 >
-                  <option value="">Auto-Detect / System Default</option>
-                  {printers.map((p) => (
-                    <option key={`barcode-${p.name}`} value={p.name}>
-                      {p.name} {p.is_default ? "(System Default)" : ""} [{p.status}]
-                    </option>
-                  ))}
-                </select>
-                <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "4px" }}>
-                  💡 <strong>Setup in Windows:</strong> Configure driver as <em>"Generic / Text Only"</em> or RAW printer for immediate passthrough.
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                <div className="form-group">
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                    Width (mm)
-                  </label>
-                  <input
-                    type="number"
-                    min={10}
-                    max={120}
-                    className="input-field"
-                    value={labelWidth}
-                    onChange={(e) => setLabelWidth(Number(e.target.value))}
-                    placeholder="50"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                    Height (mm)
-                  </label>
-                  <input
-                    type="number"
-                    min={10}
-                    max={200}
-                    className="input-field"
-                    value={labelHeight}
-                    onChange={(e) => setLabelHeight(Number(e.target.value))}
-                    placeholder="30"
-                  />
+                  <div>
+                    <h3 style={{ margin: 0, color: "#0f172a" }}>
+                      🏷️ Label Printer (DCode DC421 Pro TSPL)
+                    </h3>
+                    <p style={{ margin: "4px 0 0 0", fontSize: "0.85rem", color: "#64748b" }}>
+                      Raw TSPL byte stream via Windows spooler (RAW datatype). 203 DPI (8 dots/mm), max print width 104mm.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn secondary-btn"
+                      onClick={handleRecalibrate}
+                      disabled={calibrating}
+                      title="Send AUTODETECT media calibration command to printer"
+                      style={{ fontSize: "0.85rem", padding: "6px 12px" }}
+                    >
+                      {calibrating ? "⏳ Calibrating..." : "🔄 Calibrate Media"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn secondary-btn"
+                      onClick={handleTestLabelPrint}
+                      disabled={testingLabelPrint || !validation.valid}
+                      title="Prints a sample row with border box so alignment can be checked"
+                      style={{ fontSize: "0.85rem", padding: "6px 12px", background: "#f0fdf4", borderColor: "#86efac", color: "#166534", fontWeight: 600 }}
+                    >
+                      {testingLabelPrint ? "⏳ Printing..." : "🖨️ Print Test Label"}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
-                    Gap (mm)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={20}
-                    className="input-field"
-                    value={labelGap}
-                    onChange={(e) => setLabelGap(Number(e.target.value))}
-                    placeholder="3"
-                  />
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: "#f1f5f9",
-                  border: "1px solid #e2e8f0",
-                  padding: "10px 12px",
-                  borderRadius: "6px",
-                  marginTop: "12px",
-                  fontSize: "0.8rem",
-                  color: "#334155",
-                }}
-              >
-                <strong>📌 Die-Cut Stock Sensor:</strong> Configured to use <code>GAP {labelGap} mm, 0 mm</code> (not BLINE) to prevent misfeeds and ensure precise alignment.
-              </div>
-            </div>
-
-            {/* Label Visual Mockup Preview */}
-            <div>
-              <label style={{ display: "block", fontWeight: 600, marginBottom: "6px" }}>
-                Live Label Mockup (2-Column | {labelWidth}mm × {labelHeight}mm, Gap: {labelGap}mm)
-              </label>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px",
-                }}
-              >
-                {[1, 2].map((col) => (
+                {!validation.valid && (
                   <div
-                    key={col}
                     style={{
-                      background: "#ffffff",
-                      border: "2px dashed #94a3b8",
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
                       borderRadius: "6px",
-                      padding: "12px 8px",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      minHeight: "130px",
+                      padding: "10px 14px",
+                      marginBottom: "16px",
+                      color: "#b91c1c",
+                      fontSize: "0.85rem",
+                      fontWeight: 600,
                     }}
                   >
-                    <div style={{ fontSize: "0.76rem", fontWeight: 800, color: "#0f172a", textAlign: "center" }}>
-                      {name.trim() || "Retail Sathi Supermarket"}
+                    ⚠️ {validation.error}
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                  <div>
+                    <div className="form-group" style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                        Installed Windows Printer (RAW Spooler)
+                      </label>
+                      <select
+                        className="input-field"
+                        value={barcodePrinter}
+                        onChange={(e) => setBarcodePrinter(e.target.value)}
+                      >
+                        <option value="">Select DCode DC421 Pro or installed printer...</option>
+                        {printers.map((p) => (
+                          <option key={`label-p-${p.name}`} value={p.name}>
+                            {p.name} {p.is_default ? "(System Default)" : ""} [{p.status}]
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "4px" }}>
+                        Select your <strong>DCode DC421 Pro</strong> (USB Windows printer).
+                      </div>
                     </div>
-                    <div style={{ fontSize: "0.74rem", fontWeight: 600, color: "#334155", textAlign: "center", margin: "2px 0" }}>
-                      Amul Butter 500g
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Single Label Width (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min={10}
+                          max={104}
+                          className="input-field"
+                          value={labelWidth}
+                          onChange={(e) => setLabelWidth(Number(e.target.value))}
+                          placeholder="50"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Single Label Height (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min={10}
+                          max={200}
+                          className="input-field"
+                          value={labelHeight}
+                          onChange={(e) => setLabelHeight(Number(e.target.value))}
+                          placeholder="25"
+                        />
+                      </div>
                     </div>
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: generateCode128Svg("8901234567890", {
-                          height: 26,
-                          moduleWidth: 1.0,
-                          showText: true,
-                        }),
-                      }}
-                      style={{ display: "inline-block", margin: "2px 0", maxWidth: "100%", overflow: "hidden" }}
-                    />
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Columns
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={4}
+                          className="input-field"
+                          value={labelColumns}
+                          onChange={(e) => setLabelColumns(Number(e.target.value))}
+                          placeholder="2"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Column Gap (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.5}
+                          className="input-field"
+                          value={labelColumnGap}
+                          onChange={(e) => setLabelColumnGap(Number(e.target.value))}
+                          placeholder="2"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Row Gap (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.5}
+                          className="input-field"
+                          value={labelRowGap}
+                          onChange={(e) => setLabelRowGap(Number(e.target.value))}
+                          placeholder="2"
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Safe Padding (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          step={0.5}
+                          className="input-field"
+                          value={labelPadding}
+                          onChange={(e) => setLabelPadding(Number(e.target.value))}
+                          placeholder="2"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Offset X (dots)
+                        </label>
+                        <input
+                          type="number"
+                          min={-100}
+                          max={100}
+                          className="input-field"
+                          value={labelOffsetX}
+                          onChange={(e) => setLabelOffsetX(Number(e.target.value))}
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label style={{ display: "block", fontWeight: 600, marginBottom: "4px" }}>
+                          Offset Y (dots)
+                        </label>
+                        <input
+                          type="number"
+                          min={-100}
+                          max={100}
+                          className="input-field"
+                          value={labelOffsetY}
+                          onChange={(e) => setLabelOffsetY(Number(e.target.value))}
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: "14px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "0.85rem" }}>
+                        <input
+                          type="checkbox"
+                          checked={duplicateOdd}
+                          onChange={(e) => setDuplicateOdd(e.target.checked)}
+                        />
+                        Duplicate odd item on last column instead of leaving it blank
+                      </label>
+                    </div>
+
                     <div
                       style={{
-                        textAlign: "center",
-                        width: "100%",
-                        fontSize: "0.82rem",
-                        fontWeight: 700,
-                        color: "#0f172a",
-                        borderTop: "1px solid #f1f5f9",
-                        paddingTop: "4px",
+                        background: "#f1f5f9",
+                        border: "1px solid #e2e8f0",
+                        padding: "10px 12px",
+                        borderRadius: "6px",
+                        fontSize: "0.8rem",
+                        color: "#334155",
                       }}
                     >
-                      MRP: ₹290.00
+                      <strong>📐 Roll Specs:</strong> Total Roll Width = {labelColumns} × {labelWidth}mm + {(labelColumns - 1)} × {labelColumnGap}mm = <strong>{validation.totalWidthMm.toFixed(1)}mm</strong> (Max 104mm).
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
+
+                  {/* Live On-Screen Preview */}
+                  <div>
+                    <label style={{ display: "block", fontWeight: 600, marginBottom: "6px" }}>
+                      Live On-Screen Preview ({labelColumns}-Column | {labelWidth}mm × {labelHeight}mm)
+                    </label>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: `repeat(${Math.min(2, labelColumns)}, 1fr)`,
+                        gap: "10px",
+                        background: "#f8fafc",
+                        padding: "12px",
+                        borderRadius: "6px",
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      {[1, 2].map((col) => (
+                        <div
+                          key={col}
+                          style={{
+                            background: "#ffffff",
+                            border: "2px solid #334155",
+                            borderRadius: "4px",
+                            padding: `${labelPadding * 2}px`,
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-start",
+                            justifyContent: "center",
+                            boxSizing: "border-box",
+                            width: "100%",
+                            minHeight: "135px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "flex-start",
+                              width: "100%",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "0.88rem",
+                                fontWeight: 900,
+                                color: "#0f172a",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                width: "100%",
+                                letterSpacing: "0.4px",
+                                textAlign: "left",
+                                marginBottom: "10px",
+                              }}
+                            >
+                              {name.trim() || "RETAIL SATHI"}
+                            </div>
+
+                            <div
+                              style={{
+                                fontSize: "0.85rem",
+                                fontWeight: 800,
+                                color: "#0f172a",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                width: "100%",
+                                lineHeight: "1.2",
+                                textAlign: "left",
+                                marginBottom: "3px",
+                              }}
+                            >
+                              Amul Butter 500g
+                            </div>
+
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: generateCode128Svg("8901234567890", {
+                                  height: 36,
+                                  moduleWidth: 1.6,
+                                  showText: false,
+                                  align: "left",
+                                }),
+                              }}
+                              style={{ width: "100%", display: "flex", justifyContent: "flex-start", alignItems: "center", margin: "1px 0 2px 0" }}
+                            />
+
+                            <div
+                              style={{
+                                textAlign: "left",
+                                width: "100%",
+                                fontSize: "0.95rem",
+                                fontWeight: 900,
+                                color: "#000000",
+                                letterSpacing: "0.2px",
+                                marginTop: "1px",
+                              }}
+                            >
+                              MRP Rs.290.00
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </form>
       </div>

@@ -31,6 +31,13 @@ export interface Store {
   label_width_mm?: number | null;
   label_height_mm?: number | null;
   label_gap_mm?: number | null;
+  label_columns?: number | null;
+  label_column_gap_mm?: number | null;
+  label_row_gap_mm?: number | null;
+  label_padding_mm?: number | null;
+  label_offset_x_dots?: number | null;
+  label_offset_y_dots?: number | null;
+  label_duplicate_odd?: number | boolean | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -67,6 +74,13 @@ export interface CreateStoreInput {
   label_width_mm?: number;
   label_height_mm?: number;
   label_gap_mm?: number;
+  label_columns?: number;
+  label_column_gap_mm?: number;
+  label_row_gap_mm?: number;
+  label_padding_mm?: number;
+  label_offset_x_dots?: number;
+  label_offset_y_dots?: number;
+  label_duplicate_odd?: boolean;
 }
 
 export interface UpdateStoreInput {
@@ -101,4 +115,11 @@ export interface UpdateStoreInput {
   label_width_mm?: number;
   label_height_mm?: number;
   label_gap_mm?: number;
+  label_columns?: number;
+  label_column_gap_mm?: number;
+  label_row_gap_mm?: number;
+  label_padding_mm?: number;
+  label_offset_x_dots?: number;
+  label_offset_y_dots?: number;
+  label_duplicate_odd?: boolean;
 }

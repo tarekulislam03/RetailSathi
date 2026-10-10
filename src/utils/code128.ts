@@ -65,12 +65,14 @@ export function generateCode128Svg(
     moduleWidth?: number;
     showText?: boolean;
     fontSize?: number;
+    align?: "left" | "center";
   }
 ): string {
   const height = options?.height || 45;
   const moduleWidth = options?.moduleWidth || 1.6;
   const showText = options?.showText ?? true;
   const fontSize = options?.fontSize || 11;
+  const align = options?.align || "left";
 
   const { modules } = encodeCode128(text);
   if (modules.length === 0) return "";
@@ -95,8 +97,17 @@ export function generateCode128Svg(
 
   let textElement = "";
   if (showText) {
-    textElement = `<text x="${(totalWidth / 2).toFixed(2)}" y="${(height + fontSize).toFixed(2)}" text-anchor="middle" font-family="monospace" font-size="${fontSize}px" font-weight="600" fill="#000000">${text}</text>`;
+    if (align === "center") {
+      textElement = `<text x="${(totalWidth / 2).toFixed(2)}" y="${(height + fontSize).toFixed(2)}" text-anchor="middle" font-family="monospace" font-size="${fontSize}px" font-weight="700" fill="#000000">${text}</text>`;
+    } else {
+      textElement = `<text x="0" y="${(height + fontSize).toFixed(2)}" text-anchor="start" font-family="monospace" font-size="${fontSize}px" font-weight="700" fill="#000000">${text}</text>`;
+    }
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}" width="${totalWidth.toFixed(2)}" height="${totalHeight.toFixed(2)}">${rects}${textElement}</svg>`;
+  const svgStyle =
+    align === "center"
+      ? "max-width: 86%; height: auto; display: block; margin: 0 auto;"
+      : "max-width: 95%; height: auto; display: block; margin: 0 0;";
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}" height="${totalHeight.toFixed(2)}" preserveAspectRatio="none" style="${svgStyle}">${rects}${textElement}</svg>`;
 }

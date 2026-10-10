@@ -1,27 +1,32 @@
 import React, { useState, useEffect } from "react";
 import { Product } from "../types";
 import {
-  printBarcodeLabel,
+  printBarcodeLabels,
   calibratePrinter,
   getLabelSettings,
   LabelSettings,
+  validateLabelSettings,
+  isValidEan13,
 } from "../../../services/tsplService";
-import { printBarcodeLabelEscPos } from "../../../services/escposService";
 import { generateCode128Svg } from "../../../utils/code128";
+import { getActiveOrFirstStore } from "../../stores/services/storeService";
 
 interface PrintLabelModalProps {
-  product: Product;
+  product?: Product;
+  selectedProducts?: { product: Product; quantity: number }[];
   onClose: () => void;
 }
 
 export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
   product,
+  selectedProducts,
   onClose,
 }) => {
-  const [copies, setCopies] = useState(1);
+  // Items list to print
+  const [items, setItems] = useState<{ product: Product; quantity: number }[]>([]);
   const [settings, setSettings] = useState<LabelSettings | null>(null);
+  const [storeName, setStoreName] = useState<string>("RETAIL SATHI");
   const [printing, setPrinting] = useState(false);
-  const [posPrinting, setPosPrinting] = useState(false);
   const [calibrating, setCalibrating] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{
     type: "success" | "error" | "info";
@@ -29,106 +34,88 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
   } | null>(null);
 
   useEffect(() => {
+    if (selectedProducts && selectedProducts.length > 0) {
+      setItems(selectedProducts);
+    } else if (product) {
+      setItems([{ product, quantity: 1 }]);
+    }
+
     getLabelSettings().then(setSettings);
-  }, []);
+    getActiveOrFirstStore().then((store) => {
+      if (store?.name) setStoreName(store.name);
+    }).catch(() => {});
+  }, [product, selectedProducts]);
+
+  const previewItem = items[0]?.product || product;
+  const totalLabels = items.reduce((acc, it) => acc + (it.quantity || 1), 0);
+
+  const handleQuantityChange = (idx: number, qty: number) => {
+    const next = [...items];
+    next[idx] = { ...next[idx], quantity: Math.max(1, qty) };
+    setItems(next);
+  };
 
   const handlePrint = async () => {
-    if (!product.barcode || !product.barcode.trim()) {
+    if (!settings?.printerName) {
       setStatusMsg({
         type: "error",
-        text: "This product does not have a valid barcode assigned.",
+        text: "Please select and configure your Label Printer in Settings first.",
+      });
+      return;
+    }
+
+    const invalidItem = items.find((i) => !i.product.barcode || !i.product.barcode.trim());
+    if (invalidItem) {
+      setStatusMsg({
+        type: "error",
+        text: `Product "${invalidItem.product.name}" does not have a valid barcode.`,
       });
       return;
     }
 
     setPrinting(true);
-    setStatusMsg(null);
+    setStatusMsg({ type: "info", text: "Sending raw TSPL job to Windows spooler..." });
 
     try {
-      const res = await printBarcodeLabel(
-        {
-          id: product.id,
-          name: product.name,
-          barcode: product.barcode,
-          price: product.price,
-          mrp: product.mrp,
-          batch_no: product.batch_no,
+      const payload = items.map((i) => ({
+        item: {
+          id: i.product.id,
+          name: i.product.name,
+          barcode: i.product.barcode,
+          price: i.product.price,
+          mrp: i.product.mrp,
+          storeName,
         },
-        copies
-      );
+        quantity: i.quantity,
+      }));
 
+      const res = await printBarcodeLabels(payload, settings);
       setStatusMsg({
         type: "success",
-        text: `✓ ${res || `Successfully printed ${copies} label(s)!`}`,
+        text: `✓ ${res || `Printed ${totalLabels} barcode label(s) successfully!`}`,
       });
 
-      // Auto close on success after brief delay
       setTimeout(() => {
         onClose();
-      }, 1200);
+      }, 1400);
     } catch (err: any) {
       setStatusMsg({
         type: "error",
-        text: err?.message || "Failed to print label.",
+        text: err?.message || "Failed to print labels.",
       });
     } finally {
       setPrinting(false);
     }
   };
 
-  const handlePosPrint = async () => {
-    if (!product.barcode || !product.barcode.trim()) {
-      setStatusMsg({
-        type: "error",
-        text: "This product does not have a valid barcode assigned.",
-      });
-      return;
-    }
-
-    setPosPrinting(true);
-    setStatusMsg({ type: "info", text: "Printing barcode label to POS thermal printer..." });
-
-    try {
-      for (let i = 0; i < copies; i++) {
-        const res = await printBarcodeLabelEscPos({
-          name: product.name,
-          barcode: product.barcode,
-          price: product.price,
-          mrp: product.mrp,
-          batch_no: product.batch_no,
-        });
-
-        if (!res.success) {
-          throw new Error(res.message);
-        }
-      }
-
-      setStatusMsg({
-        type: "success",
-        text: `✓ Printed ${copies} label(s) to your POS thermal receipt printer!`,
-      });
-
-      setTimeout(() => {
-        onClose();
-      }, 1200);
-    } catch (err: any) {
-      setStatusMsg({
-        type: "error",
-        text: `POS Print Error: ${err?.message || err}`,
-      });
-    } finally {
-      setPosPrinting(false);
-    }
-  };
-
   const handleRecalibrate = async () => {
     setCalibrating(true);
-    setStatusMsg({ type: "info", text: "Sending calibration sequence (~T) to printer..." });
+    setStatusMsg({ type: "info", text: "Sending AUTODETECT media calibration to printer..." });
     try {
-      const res = await calibratePrinter();
+      const res = await calibratePrinter(settings?.printerName);
       setStatusMsg({
         type: "success",
-        text: `✓ ${res || "Printer gap sensor calibrated."}`,
+        text: `✓ ${res || "Printer media sensor calibrated."}`,
       });
     } catch (err: any) {
       setStatusMsg({
@@ -140,25 +127,36 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
     }
   };
 
-  const barcodeSvg = product.barcode
-    ? generateCode128Svg(product.barcode, {
-        height: 32,
-        moduleWidth: 1.2,
-        showText: true,
+  const barcodeRaw = previewItem?.barcode || "";
+  const isEan = isValidEan13(barcodeRaw);
+  const barcodeSvg = barcodeRaw
+    ? generateCode128Svg(barcodeRaw, {
+        height: 38,
+        moduleWidth: 1.6,
+        showText: false,
+        align: "left",
       })
     : "";
 
+  const mrpValue = previewItem
+    ? (previewItem.mrp && previewItem.mrp > 0 ? previewItem.mrp : previewItem.price)
+    : 0;
+
+  const validation = settings ? validateLabelSettings(settings) : { valid: true };
+
   return (
     <div className="modal-backdrop">
-      <div className="modal-content card" style={{ maxWidth: "440px" }}>
-        <div className="modal-header">
-          <h2>🏷️ Print Barcode Label</h2>
+      <div className="modal-content card" style={{ maxWidth: "560px", padding: 0 }}>
+        <div className="modal-header" style={{ padding: "16px 20px" }}>
+          <h2 style={{ margin: 0, fontSize: "1.2rem", display: "flex", alignItems: "center", gap: "8px" }}>
+            🏷️ Print Barcode Labels (DCode DC421 Pro)
+          </h2>
           <button className="close-btn" onClick={onClose} disabled={printing}>
             ✕
           </button>
         </div>
 
-        <div style={{ padding: "16px", backgroundColor: "#ffffff" }}>
+        <div style={{ padding: "18px 20px" }}>
           {statusMsg && (
             <div
               style={{
@@ -192,7 +190,23 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
             </div>
           )}
 
-          {/* Label Preview Card (2-Column) */}
+          {!settings?.printerName && (
+            <div
+              style={{
+                background: "#fffbeb",
+                border: "1px solid #fde68a",
+                borderRadius: "6px",
+                padding: "10px 14px",
+                marginBottom: "14px",
+                fontSize: "0.83rem",
+                color: "#92400e",
+              }}
+            >
+              ⚠️ <strong>No Label Printer configured:</strong> Go to <strong>Settings → Label Printer</strong> to select your DCode DC421 Pro printer.
+            </div>
+          )}
+
+          {/* Live Preview (2-Column) */}
           <div style={{ marginBottom: "16px" }}>
             <div
               style={{
@@ -205,14 +219,19 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
                 alignItems: "center",
               }}
             >
-              <span>2-Column Label Layout</span>
-              <span>Only MRP (Centered)</span>
+              <span>On-Screen Label Preview ({settings?.columns || 2} Columns × {settings?.labelWidthMm || 50}mm)</span>
+              <span>{isEan ? "EAN-13" : "Code 128"}</span>
             </div>
+
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "8px",
+                gridTemplateColumns: `repeat(${Math.min(2, settings?.columns || 2)}, 1fr)`,
+                gap: "10px",
+                background: "#f8fafc",
+                padding: "12px",
+                borderRadius: "6px",
+                border: "1px solid #e2e8f0",
               }}
             >
               {[1, 2].map((colNum) => (
@@ -220,113 +239,174 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
                   key={colNum}
                   style={{
                     background: "#ffffff",
-                    border: "2px dashed #94a3b8",
-                    borderRadius: "6px",
-                    padding: "10px 6px",
-                    textAlign: "center",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+                    border: "2px solid #334155",
+                    borderRadius: "4px",
+                    padding: `${(settings?.paddingMm || 2) * 2}px`,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    alignItems: "flex-start",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.06)",
+                    boxSizing: "border-box",
+                    minHeight: "135px",
+                    width: "100%",
                   }}
                 >
                   <div
                     style={{
-                      fontSize: "0.76rem",
-                      fontWeight: 700,
-                      color: "#1e293b",
-                      marginBottom: "3px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-start",
+                      width: "100%",
                     }}
-                    title={product.name}
                   >
-                    {product.name}
-                  </div>
-
-                  {barcodeSvg ? (
                     <div
-                      dangerouslySetInnerHTML={{ __html: barcodeSvg }}
                       style={{
-                        display: "inline-block",
-                        margin: "2px 0",
-                        maxWidth: "100%",
+                        fontSize: "0.88rem",
+                        fontWeight: 900,
+                        color: "#0f172a",
+                        whiteSpace: "nowrap",
                         overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        width: "100%",
+                        letterSpacing: "0.4px",
+                        textAlign: "left",
+                        marginBottom: "10px",
                       }}
-                    />
-                  ) : (
-                    <div style={{ color: "#ef4444", fontSize: "0.75rem", padding: "6px" }}>
-                      ⚠️ No barcode
+                    >
+                      {storeName}
                     </div>
-                  )}
 
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: "0.82rem",
-                      fontWeight: 700,
-                      color: "#1e293b",
-                      marginTop: "3px",
-                      paddingTop: "3px",
-                      borderTop: "1px solid #f1f5f9",
-                    }}
-                  >
-                    MRP: ₹{((product.mrp && product.mrp > 0) ? product.mrp : product.price).toFixed(2)}
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        fontWeight: 800,
+                        color: "#0f172a",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        width: "100%",
+                        lineHeight: "1.2",
+                        textAlign: "left",
+                        marginBottom: "3px",
+                      }}
+                      title={previewItem?.name}
+                    >
+                      {previewItem?.name || "Product Name"}
+                    </div>
+
+                    {barcodeSvg ? (
+                      <div
+                        dangerouslySetInnerHTML={{ __html: barcodeSvg }}
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-start",
+                          alignItems: "center",
+                          width: "100%",
+                          margin: "1px 0 2px 0",
+                        }}
+                      />
+                    ) : (
+                      <div style={{ color: "#ef4444", fontSize: "0.75rem", padding: "4px 0" }}>
+                        ⚠️ No barcode
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        fontSize: "0.88rem",
+                        fontWeight: 900,
+                        color: "#000000",
+                        width: "100%",
+                        letterSpacing: "0.3px",
+                        textAlign: "left",
+                        marginTop: "1px",
+                      }}
+                    >
+                      MRP Rs.{mrpValue.toFixed(2)}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px" }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "4px" }}>
-                Number of Copies
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={500}
-                className="input-field"
-                value={copies}
-                onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value) || 1))}
-              />
-            </div>
+          {/* Items & Quantities Table */}
+          <div style={{ marginBottom: "16px", maxHeight: "160px", overflowY: "auto" }}>
+            <label style={{ display: "block", fontSize: "0.83rem", fontWeight: 700, marginBottom: "6px", color: "#334155" }}>
+              Selected Products ({items.length}) — Total Labels: <strong>{totalLabels}</strong>
+            </label>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.83rem" }}>
+              <thead>
+                <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                  <th style={{ padding: "6px 8px" }}>Product</th>
+                  <th style={{ padding: "6px 8px" }}>Barcode</th>
+                  <th style={{ padding: "6px 8px", width: "100px" }}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, idx) => (
+                  <tr key={it.product.id || idx} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{it.product.name}</td>
+                    <td style={{ padding: "6px 8px", color: "#64748b" }}><code>{it.product.barcode || "-"}</code></td>
+                    <td style={{ padding: "6px 8px" }}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        className="input-field"
+                        style={{ width: "70px", padding: "4px 6px", fontSize: "0.82rem" }}
+                        value={it.quantity}
+                        onChange={(e) => handleQuantityChange(idx, parseInt(e.target.value) || 1)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-            <div style={{ flex: 1, fontSize: "0.78rem", color: "#64748b", alignSelf: "flex-end", paddingBottom: "6px" }}>
-              <div>Printer: <strong>{settings?.printerName || "Default TSPL"}</strong></div>
-              <div>Size: {settings?.widthMm || 50}mm × {settings?.heightMm || 30}mm</div>
+          {/* Printer Info Summary */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: "0.78rem",
+              color: "#64748b",
+              padding: "8px 12px",
+              background: "#f8fafc",
+              borderRadius: "4px",
+              marginBottom: "16px",
+            }}
+          >
+            <div>
+              Printer: <strong>{settings?.printerName || "Not Configured"}</strong>
+            </div>
+            <div>
+              Roll: <strong>{settings?.columns || 2} Cols × {settings?.labelWidthMm || 50}×{settings?.labelHeightMm || 25}mm</strong>
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginTop: "16px", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", gap: "6px" }}>
-              <button
-                type="button"
-                className="btn secondary-btn"
-                onClick={handlePosPrint}
-                disabled={posPrinting || printing || !product.barcode}
-                style={{ fontSize: "0.82rem", padding: "6px 10px", background: "#f0fdf4", borderColor: "#86efac", color: "#166534" }}
-                title="Test print this barcode sticker layout directly on your POS thermal receipt printer"
-              >
-                {posPrinting ? "⏳ Printing..." : "🧾 Test on POS Thermal Printer"}
-              </button>
-              <button
-                type="button"
-                className="btn secondary-btn"
-                onClick={handleRecalibrate}
-                disabled={calibrating || printing || posPrinting}
-                style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                title="Re-align gap sensor on stock replacement"
-              >
-                {calibrating ? "⏳ Aligning..." : "🔄 Recalibrate (~T)"}
-              </button>
-            </div>
+          {/* Actions */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              className="btn secondary-btn"
+              onClick={handleRecalibrate}
+              disabled={calibrating || printing}
+              style={{ fontSize: "0.82rem", padding: "6px 12px" }}
+              title="Send TSPL AUTODETECT media calibration"
+            >
+              {calibrating ? "⏳ Calibrating..." : "🔄 Calibrate Media"}
+            </button>
 
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
                 className="btn secondary-btn"
                 onClick={onClose}
-                disabled={printing || posPrinting}
+                disabled={printing}
                 style={{ padding: "8px 14px" }}
               >
                 Cancel
@@ -335,10 +415,10 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
                 type="button"
                 className="btn primary-btn"
                 onClick={handlePrint}
-                disabled={printing || posPrinting || !product.barcode}
+                disabled={printing || !validation.valid || items.length === 0}
                 style={{ padding: "8px 18px", fontWeight: 700 }}
               >
-                {printing ? "Printing..." : `🖨️ TSPL Print (${copies})`}
+                {printing ? "Printing..." : `🖨️ Print Labels (${totalLabels})`}
               </button>
             </div>
           </div>

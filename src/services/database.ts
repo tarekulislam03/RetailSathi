@@ -264,14 +264,13 @@ async function initTables(db: Database) {
     CREATE TABLE IF NOT EXISTS sale_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
+      product_id INTEGER,
       product_name TEXT NOT NULL,
       barcode TEXT,
       price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       total_price REAL NOT NULL,
-      FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
     );
   `);
 
@@ -420,5 +419,40 @@ async function initTables(db: Database) {
     } catch {
       // ignore
     }
+  }
+
+  // Migrate legacy sale_items table if it still has the restrictive FOREIGN KEY (product_id) REFERENCES products(id)
+  try {
+    const tableInfo = await db.select<{ sql: string }[]>(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sale_items'"
+    );
+    if (
+      tableInfo.length > 0 &&
+      tableInfo[0]?.sql &&
+      tableInfo[0].sql.includes("REFERENCES products")
+    ) {
+      await db.execute("PRAGMA foreign_keys = OFF");
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS sale_items_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          sale_id INTEGER NOT NULL,
+          product_id INTEGER,
+          product_name TEXT NOT NULL,
+          barcode TEXT,
+          price REAL NOT NULL,
+          quantity INTEGER NOT NULL,
+          total_price REAL NOT NULL,
+          FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
+        );
+      `);
+      await db.execute(
+        "INSERT INTO sale_items_new (id, sale_id, product_id, product_name, barcode, price, quantity, total_price) SELECT id, sale_id, product_id, product_name, barcode, price, quantity, total_price FROM sale_items"
+      );
+      await db.execute("DROP TABLE sale_items");
+      await db.execute("ALTER TABLE sale_items_new RENAME TO sale_items");
+      await db.execute("PRAGMA foreign_keys = ON");
+    }
+  } catch (migErr) {
+    console.warn("Could not migrate legacy sale_items foreign key constraint:", migErr);
   }
 }

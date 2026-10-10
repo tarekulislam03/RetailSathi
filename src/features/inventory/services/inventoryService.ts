@@ -17,6 +17,7 @@ export async function fetchProducts(): Promise<Product[]> {
     reorder_threshold: r.reorder_threshold ?? 0,
     gst_rate: r.gst_rate ?? 0,
     category: r.category || "General",
+    cost_price: r.cost_price ?? 0,
     created_at: r.created_at,
   }));
 }
@@ -80,5 +81,24 @@ export async function updateProduct(
 
 export async function deleteProduct(id: number): Promise<void> {
   const db = await getDb();
-  await db.execute("DELETE FROM products WHERE id = $1", [id]);
+  try {
+    await db.execute("DELETE FROM products WHERE id = $1", [id]);
+  } catch (err: any) {
+    const errStr = String(err?.message || err || "");
+    if (
+      errStr.includes("FOREIGN KEY") ||
+      errStr.includes("foreign key") ||
+      errStr.includes("constraint failed")
+    ) {
+      // Disabling foreign keys temporarily ensures product deletion succeeds without error
+      await db.execute("PRAGMA foreign_keys = OFF");
+      try {
+        await db.execute("DELETE FROM products WHERE id = $1", [id]);
+      } finally {
+        await db.execute("PRAGMA foreign_keys = ON");
+      }
+      return;
+    }
+    throw err;
+  }
 }

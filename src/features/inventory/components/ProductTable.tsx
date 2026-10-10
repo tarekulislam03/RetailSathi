@@ -46,6 +46,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
               <th>Batch No</th>
               <th>Batch Status</th>
               <th>MRP</th>
+              <th>Cost Rate</th>
               <th>Selling Rate</th>
               <th>Stock</th>
               <th>HSN</th>
@@ -78,6 +79,9 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                     </span>
                   </td>
                   <td>₹ {item.mrp ? item.mrp.toFixed(2) : "-"}</td>
+                  <td style={{ color: "#475569", fontWeight: 500 }}>
+                    ₹ {typeof item.cost_price === "number" && item.cost_price > 0 ? item.cost_price.toFixed(2) : "-"}
+                  </td>
                   <td className="price-tag">₹ {item.price.toFixed(2)}</td>
                   <td>{item.stock}</td>
                   <td>{item.hsn_code || "-"}</td>

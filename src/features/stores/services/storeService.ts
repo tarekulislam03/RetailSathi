@@ -20,11 +20,13 @@ const STORE_SELECT_FIELDS = `
 
 const BOOL_SETTING_KEYS = [
   "show_barcode", "show_upi_qr", "show_header", "show_customer", "show_savings",
-  "show_tax", "show_return_policy", "mandatory_bill_note",
+  "show_tax", "show_return_policy", "mandatory_bill_note", "label_duplicate_odd",
 ] as const;
 
 const NUM_SETTING_KEYS = [
   "paper_width", "label_width_mm", "label_height_mm", "label_gap_mm",
+  "label_columns", "label_column_gap_mm", "label_row_gap_mm", "label_padding_mm",
+  "label_offset_x_dots", "label_offset_y_dots",
 ] as const;
 
 const TEXT_SETTING_KEYS = [

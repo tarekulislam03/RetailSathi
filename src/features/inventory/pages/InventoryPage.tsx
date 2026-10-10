@@ -10,6 +10,7 @@ import { StatsGrid } from "../components/StatsGrid";
 import { LowStockModal } from "../components/LowStockModal";
 import { ProductTable } from "../components/ProductTable";
 import { ProductModal } from "../components/ProductModal";
+import { BulkPrintLabelsModal } from "../components/BulkPrintLabelsModal";
 import { pullDataFromCloud } from "../../../services/syncProcessor";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
@@ -21,6 +22,7 @@ export const InventoryPage: React.FC = () => {
   // Modal & Search State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLowStockModalOpen, setIsLowStockModalOpen] = useState<boolean>(false);
+  const [isBulkPrintOpen, setIsBulkPrintOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -77,7 +79,10 @@ export const InventoryPage: React.FC = () => {
       await deleteProduct(id);
       await loadData();
     } catch (err: any) {
-      setError(err?.message || "Failed to delete product.");
+      console.error("Failed to delete product:", err);
+      const msg =
+        typeof err === "string" ? err : err?.message || "Failed to delete product.";
+      setError(msg);
     }
   }
 
@@ -143,6 +148,25 @@ export const InventoryPage: React.FC = () => {
               )}
             </button>
 
+            <button
+              className="btn secondary-btn"
+              style={{
+                padding: "6px 12px",
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                color: "#065f46",
+                background: "linear-gradient(to bottom, #ecfdf5 0%, #d1fae5 100%)",
+                borderColor: "#6ee7b7",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+              onClick={() => setIsBulkPrintOpen(true)}
+              title="Select products and quantities to print barcode labels"
+            >
+              🏷️ Print Labels
+            </button>
+
             <input
               type="text"
               className="search-input"
@@ -200,6 +224,12 @@ export const InventoryPage: React.FC = () => {
         allProducts={products}
         onEdit={handleOpenEdit}
         onDelete={handleDeleteProduct}
+      />
+
+      <BulkPrintLabelsModal
+        products={products}
+        isOpen={isBulkPrintOpen}
+        onClose={() => setIsBulkPrintOpen(false)}
       />
     </>
   );

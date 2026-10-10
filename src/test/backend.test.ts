@@ -104,6 +104,56 @@ describe("Retail Sathi Backend Logic Tests", () => {
       console.log("inventory crud test passed!");
     });
 
+    it("should allow deleting an inventory product even if it has existing sales records", async () => {
+      await createProduct({
+        barcode: "8909999",
+        name: "Sold Rice 1kg",
+        batch_no: "BATCH-SOLD",
+        mrp: 100,
+        price: 90,
+        stock: 5,
+        hsn_code: "1006",
+        reorder_threshold: 2,
+        gst_rate: 0,
+        category: "Groceries",
+      });
+
+      const prods = await fetchProducts();
+      const productToDelete = prods.find((p) => p.barcode === "8909999")!;
+      expect(productToDelete).toBeDefined();
+
+      // Process a sale with this product
+      const createdSale = await createSale({
+        customer_name: "Test Customer",
+        customer_phone: "9999988888",
+        discount: 0,
+        tax_amount: 0,
+        payment_mode: "Cash",
+        items: [
+          {
+            product_id: productToDelete.id,
+            product_name: productToDelete.name,
+            barcode: productToDelete.barcode,
+            price: productToDelete.price,
+            quantity: 1,
+            total_price: 90,
+          },
+        ],
+      });
+
+      // Deleting the product should succeed without foreign key constraint error
+      await expect(deleteProduct(productToDelete.id)).resolves.not.toThrow();
+
+      // Verify the product is removed from products
+      const remainingProducts = await fetchProducts();
+      expect(remainingProducts.some((p) => p.id === productToDelete.id)).toBe(false);
+
+      // Verify sales transaction history is preserved
+      const { sales } = await fetchSalesWithItems();
+      const foundSale = sales.find((s) => s.id === createdSale.id);
+      expect(foundSale).toBeDefined();
+    });
+
     it("should search inventory products correctly", async () => {
       await createProduct({
         barcode: "8901001",

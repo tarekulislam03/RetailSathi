@@ -244,7 +244,7 @@ export function createReceiptCanvas(
     return currY + fontSize + 8;
   };
 
-  // 1. STORE HEADER (Store Name enlarged 2x: 96px for 80mm / 72px for 58mm)
+  // 1. STORE HEADER (Store Name: 88px for 80mm / 64px for 58mm)
   if (showHeader) {
     const logo = options?.logoImage;
     if (logo && logo.width > 0 && logo.height > 0) {
@@ -257,7 +257,7 @@ export function createReceiptCanvas(
       y += h + 12;
     }
     const storeName = store?.name || "RETAIL SATHI SUPERMARKET";
-    const nameFontSize = canvasWidth === 384 ? 72 : 96; // 2x store name
+    const nameFontSize = canvasWidth === 384 ? 64 : 88; // Reduced by 8px
     y = drawCenteredText(storeName, `bold ${nameFontSize}px sans-serif`, y);
 
     if (store?.tagline) {
@@ -558,9 +558,9 @@ export function createBarcodeLabelCanvas(
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#000000";
 
-  // 2-Column geometry
-  const margin = 8;
-  const middleGap = 12;
+  // 2-Column geometry (minimized margins so it fills the label roll width)
+  const margin = 4;
+  const middleGap = 6;
   const colWidth = Math.floor((canvasWidth - 2 * margin - middleGap) / 2);
 
   const col1Left = margin;
@@ -591,15 +591,15 @@ export function createBarcodeLabelCanvas(
 
   const is58 = paperWidth === 58;
   const storeFont = is58 ? "bold 16px sans-serif" : "bold 20px sans-serif";
-  const nameFont = is58 ? "bold 15px sans-serif" : "bold 18px sans-serif";
-  const bcFont = is58 ? "bold 14px monospace" : "bold 16px monospace";
-  const mrpFont = is58 ? "bold 18px sans-serif" : "bold 22px sans-serif";
-  const barcodeH = is58 ? 40 : 50;
+  const nameFont = is58 ? "bold 17px sans-serif" : "bold 22px sans-serif";
+  const bcFont = is58 ? "bold 15px monospace" : "bold 18px monospace";
+  const mrpFont = is58 ? "bold 20px sans-serif" : "bold 26px sans-serif";
+  const barcodeH = is58 ? 68 : 88;
 
   let maxY = 0;
 
   columns.forEach((col) => {
-    let y = 20;
+    let y = 14;
 
     // 1. Store Header (centered)
     ctx.font = storeFont;
@@ -614,15 +614,15 @@ export function createBarcodeLabelCanvas(
     ctx.lineTo(col.right, y);
     ctx.stroke();
     ctx.setLineDash([]);
-    y += is58 ? 16 : 18;
+    y += is58 ? 14 : 16;
 
-    // 2. Product Name (centered, truncated to fit column)
+    // 2. Product Name (centered, prominent)
     ctx.font = nameFont;
     ctx.textAlign = "center";
-    const maxChars = is58 ? 16 : 22;
+    const maxChars = is58 ? 18 : 24;
     const displayName = (item.name || "Item").slice(0, maxChars);
     ctx.fillText(displayName, col.center, y);
-    y += is58 ? 18 : 22;
+    y += is58 ? 20 : 24;
 
     if (item.batch_no) {
       ctx.font = is58 ? "12px sans-serif" : "14px sans-serif";
@@ -630,16 +630,19 @@ export function createBarcodeLabelCanvas(
       y += is58 ? 14 : 16;
     }
 
-    // 3. Barcode (Code 128) (centered)
+    // 3. Barcode (Code 128) (slightly reduced width to 86% of column, centered in middle)
     if (barcodeData && item.barcode) {
-      const moduleWidth = Math.max(1, Math.min(is58 ? 1.4 : 2, Math.floor((col.width - 6) / barcodeData.modules.length)));
-      const totalBcW = barcodeData.modules.length * moduleWidth;
+      const availableW = Math.floor(col.width * 0.86);
+      const moduleWidth = Math.max(1, availableW / barcodeData.modules.length);
+      const totalBcW = Math.round(barcodeData.modules.length * moduleWidth);
       const startX = col.center - totalBcW / 2;
 
       ctx.fillStyle = "#000000";
       for (let i = 0; i < barcodeData.modules.length; i++) {
         if (barcodeData.modules[i]) {
-          ctx.fillRect(startX + i * moduleWidth, y, moduleWidth, barcodeH);
+          const barX = Math.round(startX + i * moduleWidth);
+          const nextX = Math.round(startX + (i + 1) * moduleWidth);
+          ctx.fillRect(barX, y, Math.max(1, nextX - barX), barcodeH);
         }
       }
       y += barcodeH + (is58 ? 14 : 18);

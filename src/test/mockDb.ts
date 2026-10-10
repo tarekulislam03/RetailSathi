@@ -92,14 +92,13 @@ export function createMockDatabase() {
     CREATE TABLE IF NOT EXISTS sale_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sale_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
+      product_id INTEGER,
       product_name TEXT NOT NULL,
       barcode TEXT,
       price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       total_price REAL NOT NULL,
-      FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
-      FOREIGN KEY (product_id) REFERENCES products(id)
+      FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS purchases (
