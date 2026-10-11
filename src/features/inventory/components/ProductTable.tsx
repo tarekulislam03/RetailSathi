@@ -7,6 +7,7 @@ import { PrintLabelModal } from "./PrintLabelModal";
 interface ProductTableProps {
   products: Product[];
   allProducts?: Product[];
+  searchTerm?: string;
   onEdit: (product: Product) => void;
   onDelete: (id: number) => void;
 }
@@ -14,6 +15,7 @@ interface ProductTableProps {
 export const ProductTable: React.FC<ProductTableProps> = ({
   products,
   allProducts,
+  searchTerm,
   onEdit,
   onDelete,
 }) => {
@@ -21,15 +23,29 @@ export const ProductTable: React.FC<ProductTableProps> = ({
   const [pageSize, setPageSize] = useState(10);
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
 
+  // Reset to first page only when the search term changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [products]);
+  }, [searchTerm]);
 
   const totalItems = products.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const safePage = Math.min(currentPage, totalPages);
+
+  // Clamp current page if total pages reduced below current page
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedProducts = products.slice(startIndex, startIndex + pageSize);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   const statusMap = getBatchStatusMap(
     allProducts && allProducts.length > 0 ? allProducts : products
@@ -134,7 +150,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
         pageSize={pageSize}
         totalItems={totalItems}
         onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
+        onPageSizeChange={handlePageSizeChange}
       />
 
       {labelProduct && (

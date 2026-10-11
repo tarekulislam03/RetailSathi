@@ -153,6 +153,7 @@ export const MarketingPage: React.FC = () => {
         ) : (
           <MarketingTable
             persons={filteredPersons}
+            searchTerm={searchTerm}
             onEdit={handleOpenEditModal}
             onDelete={handleDeletePerson}
             onViewDetails={handleOpenDetailsModal}

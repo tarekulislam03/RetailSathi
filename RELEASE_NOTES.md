@@ -1,11 +1,10 @@
-# Retail Sathi v0.1.8 - Thermal Label Printing & Inventory Updates
+# Retail Sathi v0.1.9 - Inventory Pagination Fix & Directory Navigation Stability
 
-### 🚀 What's New & Improvements
-- **DCode DC421 Pro Thermal Label Printer Integration**: Native TSPL printing pipeline with support for 2-column roll layouts, custom label dimensions, and real-time layout computation.
-- **Left-Aligned Label Layout**: Polished barcode label design with clean left-aligned text, bold store name with separation spacing, tight barcode-to-MRP positioning, and barcode-only display.
-- **Inventory Cost Rate Column**: Added a dedicated Cost Rate column in the Inventory Directory and mapped cost price on product fetch and edit operations.
-- **Purchase Stock Synchronization**: Full cloud synchronization of purchase bill items directly into the products inventory database.
-- **Auto-Update & Cross-Platform Support**: Built for seamless automatic background updates on both Windows and Linux installations.
+### 🚀 Bug Fixes & Stability Improvements
+- **Fixed Inventory Directory Pagination Glitch**: Resolved an issue where background database sync polls (every ~3 seconds) caused the inventory table to reset back to page 1 while navigating or viewing subsequent pages (e.g., page 3).
+- **Directory Navigation Stability**: Enhanced pagination state across Inventory, Customers, Sales, Stock Ledger, Purchases, and Marketing directories. Table views now maintain the user's active page during automatic background syncs and only reset to page 1 upon user-initiated search query or filter changes.
+- **Safe Page Clamping**: Added automatic boundary clamping so that if item counts shrink or change, the table cleanly adjusts to the nearest valid page without crashing or displaying empty slices.
+- **Page Size Selector Handling**: Smooth page recalculation whenever the rows-per-page selector is adjusted.
 
 ---
 *Retail Sathi Automatic Online Update System*

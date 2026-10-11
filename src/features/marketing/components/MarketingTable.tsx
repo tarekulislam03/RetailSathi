@@ -4,6 +4,7 @@ import { Pagination } from "../../../components/common/Pagination";
 
 interface MarketingTableProps {
   persons: MarketingPerson[];
+  searchTerm?: string;
   onEdit: (person: MarketingPerson) => void;
   onDelete: (id: number) => void;
   onViewDetails: (person: MarketingPerson) => void;
@@ -11,6 +12,7 @@ interface MarketingTableProps {
 
 export const MarketingTable: React.FC<MarketingTableProps> = ({
   persons,
+  searchTerm,
   onEdit,
   onDelete,
   onViewDetails,
@@ -20,13 +22,25 @@ export const MarketingTable: React.FC<MarketingTableProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [persons]);
+  }, [searchTerm]);
 
   const totalItems = persons.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const safePage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedPersons = persons.slice(startIndex, startIndex + pageSize);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   return (
     <>
@@ -126,7 +140,7 @@ export const MarketingTable: React.FC<MarketingTableProps> = ({
         pageSize={pageSize}
         totalItems={totalItems}
         onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
+        onPageSizeChange={handlePageSizeChange}
       />
     </>
   );

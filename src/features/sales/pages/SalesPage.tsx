@@ -307,6 +307,7 @@ export const SalesPage: React.FC = () => {
         ) : (
           <SalesTable
             sales={filteredSales}
+            searchTerm={searchTerm}
             onViewInvoice={handleViewInvoice}
             onEditSale={handleEditSale}
             onDeleteSale={handleDeleteSale}

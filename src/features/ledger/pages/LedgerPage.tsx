@@ -192,7 +192,10 @@ export const LedgerPage: React.FC = () => {
               : "No stock movements recorded yet."}
           </div>
         ) : (
-          <LedgerTable movements={filteredMovements} />
+          <LedgerTable
+            movements={filteredMovements}
+            searchTerm={searchTerm}
+          />
         )}
       </section>
     </>

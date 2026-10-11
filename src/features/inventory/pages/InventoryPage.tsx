@@ -203,6 +203,7 @@ export const InventoryPage: React.FC = () => {
           <ProductTable
             products={filteredProducts}
             allProducts={products}
+            searchTerm={searchTerm}
             onEdit={handleOpenEdit}
             onDelete={handleDeleteProduct}
           />

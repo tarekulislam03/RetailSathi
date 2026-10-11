@@ -54,7 +54,7 @@ export const LowStockModal: React.FC<LowStockModalProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterType, searchTerm, lowStockItems.length]);
+  }, [filterType, searchTerm]);
 
   if (!isOpen) return null;
 
@@ -64,9 +64,21 @@ export const LowStockModal: React.FC<LowStockModalProps> = ({
 
   const totalItems = filteredItems.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const safePage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedItems = filteredItems.slice(startIndex, startIndex + pageSize);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   const outOfStockCount = lowStockItems.filter((p) => p.stock === 0).length;
   const lowStockOnlyCount = lowStockItems.filter((p) => p.stock > 0).length;
@@ -298,7 +310,7 @@ export const LowStockModal: React.FC<LowStockModalProps> = ({
                       pageSize={pageSize}
                       totalItems={totalItems}
                       onPageChange={setCurrentPage}
-                      onPageSizeChange={setPageSize}
+                      onPageSizeChange={handlePageSizeChange}
                       pageSizeOptions={[6, 12, 24]}
                     />
                   )}

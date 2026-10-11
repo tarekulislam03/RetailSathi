@@ -5,21 +5,37 @@ import { formatTo12Hour } from "../../../utils/dateUtils";
 
 interface LedgerTableProps {
   movements: StockMovement[];
+  searchTerm?: string;
 }
 
-export const LedgerTable: React.FC<LedgerTableProps> = ({ movements }) => {
+export const LedgerTable: React.FC<LedgerTableProps> = ({
+  movements,
+  searchTerm,
+}) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [movements]);
+  }, [searchTerm]);
 
   const totalItems = movements.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const safePage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedMovements = movements.slice(startIndex, startIndex + pageSize);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   return (
     <>
@@ -105,7 +121,7 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({ movements }) => {
         pageSize={pageSize}
         totalItems={totalItems}
         onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
+        onPageSizeChange={handlePageSizeChange}
       />
     </>
   );

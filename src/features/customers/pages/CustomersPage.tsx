@@ -202,6 +202,7 @@ export const CustomersPage: React.FC = () => {
         ) : (
           <CustomerTable
             customers={filteredCustomers}
+            searchTerm={searchTerm}
             onEdit={handleOpenEdit}
             onDelete={handleDeleteCustomer}
             onSettleDues={handleOpenClearDues}

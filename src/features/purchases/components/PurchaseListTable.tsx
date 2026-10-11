@@ -5,11 +5,13 @@ import { formatTo12Hour } from "../../../utils/dateUtils";
 
 interface PurchaseListTableProps {
   purchases: Purchase[];
+  searchTerm?: string;
   onViewDetails: (purchaseId: number) => void;
 }
 
 export const PurchaseListTable: React.FC<PurchaseListTableProps> = ({
   purchases,
+  searchTerm,
   onViewDetails,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -17,21 +19,25 @@ export const PurchaseListTable: React.FC<PurchaseListTableProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [purchases]);
-
-  if (purchases.length === 0) {
-    return (
-      <div className="empty-state">
-        No purchase records found. Click "+ RECORD NEW PURCHASE" above to record a stock entry!
-      </div>
-    );
-  }
+  }, [searchTerm]);
 
   const totalItems = purchases.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const safePage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedPurchases = purchases.slice(startIndex, startIndex + pageSize);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   return (
     <>
@@ -82,7 +88,7 @@ export const PurchaseListTable: React.FC<PurchaseListTableProps> = ({
         pageSize={pageSize}
         totalItems={totalItems}
         onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
+        onPageSizeChange={handlePageSizeChange}
       />
     </>
   );

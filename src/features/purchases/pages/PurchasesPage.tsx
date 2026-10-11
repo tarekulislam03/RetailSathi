@@ -98,6 +98,7 @@ export const PurchasesPage: React.FC = () => {
         ) : (
           <PurchaseListTable
             purchases={filteredPurchases}
+            searchTerm={searchQuery}
             onViewDetails={(id) => setSelectedDetailsId(id)}
           />
         )}

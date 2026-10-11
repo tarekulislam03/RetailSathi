@@ -4,6 +4,7 @@ import { Pagination } from "../../../components/common/Pagination";
 
 interface CustomerTableProps {
   customers: Customer[];
+  searchTerm?: string;
   onEdit: (customer: Customer) => void;
   onDelete: (id: number) => void;
   onSettleDues?: (customer: Customer) => void;
@@ -12,6 +13,7 @@ interface CustomerTableProps {
 
 export const CustomerTable: React.FC<CustomerTableProps> = ({
   customers,
+  searchTerm,
   onEdit,
   onDelete,
   onSettleDues,
@@ -22,13 +24,25 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [customers]);
+  }, [searchTerm]);
 
   const totalItems = customers.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const safePage = Math.min(currentPage, totalPages);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedCustomers = customers.slice(startIndex, startIndex + pageSize);
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+  };
 
   return (
     <>
@@ -142,7 +156,7 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
         pageSize={pageSize}
         totalItems={totalItems}
         onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
+        onPageSizeChange={handlePageSizeChange}
       />
     </>
   );
