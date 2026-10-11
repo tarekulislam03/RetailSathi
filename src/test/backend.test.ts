@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createMockDatabase } from "./mockDb";
+import { getDb } from "../services/database";
 
 // Service Imports
 import {
@@ -349,6 +350,61 @@ describe("Retail Sathi Backend Logic Tests", () => {
       expect(saleDetails!.items![0].product_name).toBe("Shampoo 200ml");
 
       console.log("billing sale transaction test passed!");
+    });
+
+    it("should update product mrp and selling price in database when edited during sale checkout", async () => {
+      await createProduct({
+        barcode: "EDIT_BAR_01",
+        name: "Biscuit Pack",
+        batch_no: "B-BISCUIT",
+        mrp: 50,
+        price: 45,
+        stock: 10,
+        hsn_code: "1905",
+        reorder_threshold: 2,
+        gst_rate: 0,
+        category: "Bakery",
+      });
+
+      let products = await fetchProducts();
+      const product = products.find((p) => p.barcode === "EDIT_BAR_01")!;
+      expect(product).toBeDefined();
+      expect(product.mrp).toBe(50);
+      expect(product.price).toBe(45);
+
+      // User edited MRP to 60 and Selling Price to 55 in cart and completed the sale
+      const editedMrp = 60;
+      const editedPrice = 55;
+      const sale = await createSale({
+        customer_name: "Test Customer",
+        customer_phone: "9876500000",
+        payment_mode: "Cash",
+        total_mrp: editedMrp * 2,
+        discount: (editedMrp - editedPrice) * 2,
+        items: [
+          {
+            product_id: product.id!,
+            product_name: product.name,
+            barcode: product.barcode,
+            price: editedPrice,
+            quantity: 2,
+            mrp: editedMrp,
+          },
+        ],
+      });
+
+      expect(sale.grand_total).toBe(110);
+      expect(sale.items![0].price).toBe(55);
+      expect(sale.items![0].mrp).toBe(60);
+
+      // Verify that database products table was updated with the new mrp, price and deducted stock (10 - 2 = 8)
+      products = await fetchProducts();
+      const updatedProduct = products.find((p) => p.barcode === "EDIT_BAR_01")!;
+      expect(updatedProduct.stock).toBe(8);
+      expect(updatedProduct.mrp).toBe(60);
+      expect(updatedProduct.price).toBe(55);
+
+      console.log("billing product mrp & price database update test passed!");
     });
   });
 
@@ -761,6 +817,56 @@ describe("Retail Sathi Backend Logic Tests", () => {
       expect(afterDeleteAnalytics.totalRevenue).toBe(0);
 
       console.log("delete sale test passed!");
+    });
+
+    it("should restore inventory stock upon delete sale when matched by barcode or product name fallback", async () => {
+      // 1. Create a product with initial stock
+      const prod = await createProduct({
+        barcode: "FALLBACK_BC_001",
+        name: "Fallback Test Biscuit",
+        batch_no: "FB01",
+        mrp: 50,
+        price: 40,
+        stock: 25,
+        hsn_code: "1905",
+        reorder_threshold: 5,
+        gst_rate: 0,
+        category: "Snacks",
+      });
+
+      // 2. Create a sale with this item (stock will become 25 - 5 = 20)
+      const sale = await createSale({
+        customer_name: "Fallback Customer",
+        customer_phone: "8888877777",
+        discount: 0,
+        tax_amount: 0,
+        payment_mode: "Cash",
+        items: [
+          {
+            product_id: prod.id,
+            product_name: prod.name,
+            barcode: prod.barcode,
+            price: prod.price,
+            quantity: 5,
+          },
+        ],
+      });
+
+      let prods = await fetchProducts();
+      let found = prods.find((p) => p.id === prod.id);
+      expect(found?.stock).toBe(20);
+
+      // Simulate a sale item where product_id is null/orphaned but barcode is intact
+      const db = await getDb();
+      await db.execute("UPDATE sale_items SET product_id = NULL WHERE sale_id = $1", [sale.id]);
+
+      // 3. Delete the sale
+      await deleteSale(sale.id);
+
+      // 4. Verify stock increased back by 5 (20 + 5 = 25) via barcode fallback
+      prods = await fetchProducts();
+      found = prods.find((p) => p.id === prod.id);
+      expect(found?.stock).toBe(25);
     });
   });
 

@@ -5,12 +5,16 @@ import { generateUniqueBarcode } from "../../../utils/barcodeGenerator";
 
 interface ProductModalProps {
   editingProduct: Product | null;
+  title?: string;
+  submitButtonText?: string;
   onSave: (payload: ProductInput) => Promise<void>;
   onClose: () => void;
 }
 
 export const ProductModal: React.FC<ProductModalProps> = ({
   editingProduct,
+  title,
+  submitButtonText,
   onSave,
   onClose,
 }) => {
@@ -101,7 +105,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       <div className="modal-content card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <h2>{editingProduct ? "Edit Product" : "Add New Product"}</h2>
+            <h2>{title || (editingProduct ? "Edit Product" : "Add New Product")}</h2>
             <p className="hint-text">
               Press <strong>Enter</strong> to jump to next field
             </p>
@@ -266,7 +270,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
           <div className="form-actions">
             <button type="submit" className="btn primary-btn">
-              {editingProduct ? "Update Product" : "Save Product (Enter)"}
+              {submitButtonText || (editingProduct ? "Update Product" : "Save Product (Enter)")}
             </button>
             <button type="button" className="btn secondary-btn" onClick={onClose}>
               Cancel

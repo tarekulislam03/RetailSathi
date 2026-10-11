@@ -15,12 +15,14 @@ interface PrintLabelModalProps {
   product?: Product;
   selectedProducts?: { product: Product; quantity: number }[];
   onClose: () => void;
+  onPrintSuccess?: () => void;
 }
 
 export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
   product,
   selectedProducts,
   onClose,
+  onPrintSuccess,
 }) => {
   // Items list to print
   const [items, setItems] = useState<{ product: Product; quantity: number }[]>([]);
@@ -96,6 +98,7 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
       });
 
       setTimeout(() => {
+        onPrintSuccess?.();
         onClose();
       }, 1400);
     } catch (err: any) {

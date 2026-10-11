@@ -17,6 +17,13 @@ export const BulkPrintLabelsModal: React.FC<BulkPrintLabelsModalProps> = ({
   const [selectedMap, setSelectedMap] = useState<Record<number, number>>({});
   const [showPrintModal, setShowPrintModal] = useState(false);
 
+  const handleClose = () => {
+    setSelectedMap({});
+    setSearchTerm("");
+    setShowPrintModal(false);
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   const validProducts = products.filter((p) => p.barcode && p.barcode.trim());
@@ -80,7 +87,7 @@ export const BulkPrintLabelsModal: React.FC<BulkPrintLabelsModalProps> = ({
             <h2 style={{ margin: 0, fontSize: "1.2rem", display: "flex", alignItems: "center", gap: "8px" }}>
               🖨️ Select Products to Print Labels
             </h2>
-            <button className="close-btn" onClick={onClose}>
+            <button className="close-btn" onClick={handleClose}>
               ✕
             </button>
           </div>
@@ -198,7 +205,7 @@ export const BulkPrintLabelsModal: React.FC<BulkPrintLabelsModalProps> = ({
               </div>
 
               <div style={{ display: "flex", gap: "8px" }}>
-                <button type="button" className="btn secondary-btn" onClick={onClose}>
+                <button type="button" className="btn secondary-btn" onClick={handleClose}>
                   Cancel
                 </button>
                 <button
@@ -218,8 +225,12 @@ export const BulkPrintLabelsModal: React.FC<BulkPrintLabelsModalProps> = ({
       {showPrintModal && (
         <PrintLabelModal
           selectedProducts={selectedPayload}
+          onPrintSuccess={() => {
+            setSelectedMap({});
+          }}
           onClose={() => {
             setShowPrintModal(false);
+            setSelectedMap({});
             onClose();
           }}
         />

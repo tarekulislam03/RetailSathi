@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Product } from "../../inventory/types";
-import { fetchProducts } from "../../inventory/services/inventoryService";
+import { Product, ProductInput } from "../../inventory/types";
+import { fetchProducts, createProduct } from "../../inventory/services/inventoryService";
 import { Customer } from "../../customers/types";
 import { fetchCustomers } from "../../customers/services/customerService";
 import { MarketingPerson } from "../../marketing/types";
@@ -11,6 +11,7 @@ import { BarcodeSearch } from "../components/BarcodeSearch";
 import { CartTable } from "../components/CartTable";
 import { CheckoutPanel } from "../components/CheckoutPanel";
 import { ReceiptModal } from "../components/ReceiptModal";
+import { ProductModal } from "../../inventory/components/ProductModal";
 
 import { pullDataFromCloud } from "../../../services/syncProcessor";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
@@ -32,6 +33,9 @@ export const BillingPage: React.FC = () => {
   // Completed Receipt Modal
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
 
+  // Quick Add Product Modal (for accidental billing of items not yet in inventory)
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+
   async function loadBillingData() {
     try {
       let prods = await fetchProducts();
@@ -49,7 +53,7 @@ export const BillingPage: React.FC = () => {
       setMarketingPersons(mkts);
       setTodayBillsCount(billCount);
 
-      // Keep cart product details synchronized if a product name/price/stock changed in DB
+      // Keep cart product details synchronized if stock/name/category changed in DB while preserving cart-edited price & mrp
       setCart((prevCart) => {
         if (prevCart.length === 0) return prevCart;
         return prevCart.map((item) => {
@@ -57,8 +61,11 @@ export const BillingPage: React.FC = () => {
           if (fresh) {
             return {
               ...item,
-              product: fresh,
-              total: fresh.price * item.quantity,
+              product: {
+                ...fresh,
+                price: item.product.price !== undefined ? item.product.price : fresh.price,
+                mrp: item.product.mrp !== undefined ? item.product.mrp : fresh.mrp,
+              },
             };
           }
           return item;
@@ -121,8 +128,44 @@ export const BillingPage: React.FC = () => {
     );
   }
 
+  function handleUpdateCartPrice(productId: number, newPrice: number) {
+    setCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId
+          ? { ...item, product: { ...item.product, price: newPrice } }
+          : item
+      )
+    );
+  }
+
+  function handleUpdateCartMrp(productId: number, newMrp: number) {
+    setCart((prev) =>
+      prev.map((item) =>
+        item.product.id === productId
+          ? { ...item, product: { ...item.product, mrp: newMrp } }
+          : item
+      )
+    );
+  }
+
   function handleRemoveItem(productId: number) {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  }
+
+  async function handleSaveNewProduct(payload: ProductInput) {
+    try {
+      const createdProd = await createProduct(payload);
+      setIsAddProductOpen(false);
+
+      // Automatically add the new product to the cart
+      handleAddToCart(createdProd);
+
+      // Refresh product list in background
+      await loadBillingData();
+    } catch (err: any) {
+      console.error("Failed to add product to inventory from billing:", err);
+      setError(err?.message || "Failed to create product in inventory.");
+    }
   }
 
   async function handleCheckout(paymentDetails?: {
@@ -220,8 +263,11 @@ export const BillingPage: React.FC = () => {
           <CartTable
             cart={cart}
             onUpdateQty={handleUpdateCartQty}
+            onUpdatePrice={handleUpdateCartPrice}
+            onUpdateMrp={handleUpdateCartMrp}
             onRemoveItem={handleRemoveItem}
             onClearCart={() => setCart([])}
+            onOpenAddProduct={() => setIsAddProductOpen(true)}
           />
         </div>
 
@@ -242,6 +288,16 @@ export const BillingPage: React.FC = () => {
           />
         </div>
       </div>
+
+      {isAddProductOpen && (
+        <ProductModal
+          editingProduct={null}
+          title="Add Product to Inventory & Cart"
+          submitButtonText="Save to Inventory & Add to Cart"
+          onSave={handleSaveNewProduct}
+          onClose={() => setIsAddProductOpen(false)}
+        />
+      )}
 
       {completedSale && (
         <ReceiptModal

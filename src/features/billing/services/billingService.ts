@@ -1,4 +1,5 @@
 import { getDb } from "../../../services/database";
+import { notifyDbUpdated } from "../../../services/syncProcessor";
 import { Sale, SaleItem, CreateSaleInput, UpdateSaleInput } from "../types";
 import { recordCustomerSale, calculateLoyaltyPoints } from "../../customers/services/customerService";
 
@@ -148,11 +149,18 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
       ]
     );
 
-    // Deduct stock in products table
-    await db.execute(
-      "UPDATE products SET stock = stock - $1 WHERE id = $2",
-      [item.quantity, item.product_id]
-    );
+    // Deduct stock and update mrp & price in products table if modified
+    if (item.mrp !== undefined && item.mrp > 0) {
+      await db.execute(
+        "UPDATE products SET stock = stock - $1, price = $2, mrp = $3 WHERE id = $4",
+        [item.quantity, item.price, item.mrp, item.product_id]
+      );
+    } else {
+      await db.execute(
+        "UPDATE products SET stock = stock - $1, price = $2 WHERE id = $3",
+        [item.quantity, item.price, item.product_id]
+      );
+    }
 
     saleItems.push({
       sale_id: saleId,
@@ -162,6 +170,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
       price: item.price,
       quantity: item.quantity,
       total_price: itemTotal,
+      mrp: item.mrp !== undefined ? item.mrp : item.price,
     });
   }
 
@@ -509,17 +518,52 @@ export async function deleteSale(saleId: number): Promise<void> {
 
   // 3. Return stock to products table (increase stock for each sale item)
   for (const item of saleItems) {
-    if (item.product_id) {
+    let restored = false;
+    // Attempt 1: by product_id if valid
+    if (item.product_id && item.product_id > 0) {
       try {
-        await db.execute(
+        const res = await db.execute(
           "UPDATE products SET stock = stock + $1 WHERE id = $2",
           [item.quantity, item.product_id]
         );
+        if (res && res.rowsAffected && res.rowsAffected > 0) {
+          restored = true;
+        }
       } catch (err) {
-        console.error(`Failed to revert stock for product #${item.product_id}:`, err);
+        console.error(`Failed to revert stock for product ID #${item.product_id}:`, err);
+      }
+    }
+
+    // Attempt 2: fallback by barcode if product_id was not matched
+    if (!restored && item.barcode && item.barcode.trim()) {
+      try {
+        const res = await db.execute(
+          "UPDATE products SET stock = stock + $1 WHERE barcode = $2",
+          [item.quantity, item.barcode.trim()]
+        );
+        if (res && res.rowsAffected && res.rowsAffected > 0) {
+          restored = true;
+        }
+      } catch (err) {
+        console.error(`Failed to revert stock by barcode ${item.barcode}:`, err);
+      }
+    }
+
+    // Attempt 3: fallback by product_name if product_id and barcode did not match
+    if (!restored && item.product_name && item.product_name.trim()) {
+      try {
+        await db.execute(
+          "UPDATE products SET stock = stock + $1 WHERE LOWER(name) = LOWER($2)",
+          [item.quantity, item.product_name.trim()]
+        );
+      } catch (err) {
+        console.error(`Failed to revert stock by name ${item.product_name}:`, err);
       }
     }
   }
+
+  // Notify active views (Inventory, Billing, Sales) that product stocks and sales have updated
+  notifyDbUpdated("products");
 
   // 4. Revert marketing sales if marketing person assigned
   if (sale.marketing_person_id) {

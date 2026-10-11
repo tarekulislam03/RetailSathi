@@ -22,7 +22,7 @@ export async function fetchProducts(): Promise<Product[]> {
   }));
 }
 
-export async function createProduct(product: ProductInput): Promise<void> {
+export async function createProduct(product: ProductInput): Promise<Product> {
   const db = await getDb();
   const now = new Date();
   const formattedDate = `${now.getFullYear()}-${String(
@@ -33,7 +33,7 @@ export async function createProduct(product: ProductInput): Promise<void> {
     now.getSeconds()
   ).padStart(2, "0")}`;
 
-  await db.execute(
+  const res = await db.execute(
     `INSERT INTO products (barcode, name, batch_no, mrp, price, cost_price, stock, hsn_code, reorder_threshold, gst_rate, category, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
@@ -51,6 +51,33 @@ export async function createProduct(product: ProductInput): Promise<void> {
       formattedDate,
     ]
   );
+
+  let insertedId = res?.lastInsertId;
+  if (!insertedId && product.barcode) {
+    const rows = await db.select<{ id: number }[]>(
+      "SELECT id FROM products WHERE barcode = $1 ORDER BY id DESC LIMIT 1",
+      [product.barcode]
+    );
+    if (rows && rows.length > 0) {
+      insertedId = rows[0].id;
+    }
+  }
+
+  return {
+    id: insertedId || 0,
+    barcode: product.barcode,
+    name: product.name,
+    batch_no: product.batch_no,
+    mrp: product.mrp ?? 0,
+    price: product.price,
+    cost_price: product.cost_price ?? 0,
+    stock: product.stock,
+    hsn_code: product.hsn_code,
+    reorder_threshold: product.reorder_threshold,
+    gst_rate: product.gst_rate,
+    category: product.category,
+    created_at: formattedDate,
+  };
 }
 
 export async function updateProduct(
