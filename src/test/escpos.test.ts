@@ -131,6 +131,33 @@ describe("Image-Based Receipt Generator Tests", () => {
     expect(canvas.width).toBe(576);
     expect(canvas.height).toBeGreaterThan(400);
   });
+
+  it("should include MRP in receipt items table for both 80mm and 58mm layouts", () => {
+    const saleWithMrp: Sale = {
+      ...mockSale,
+      items: [
+        {
+          product_id: 101,
+          product_name: "Basmati Rice 1kg",
+          barcode: "8901234567890",
+          price: 110,
+          quantity: 2,
+          mrp: 140,
+          total_price: 220,
+        },
+      ],
+    };
+
+    const canvas80 = createReceiptCanvas(saleWithMrp, { paperWidth: 80 });
+    expect(canvas80.width).toBe(576);
+    const bytes80 = buildReceiptEscPos(saleWithMrp, { paperWidth: 80 });
+    expect(bytes80.length).toBeGreaterThan(100);
+
+    const canvas58 = createReceiptCanvas(saleWithMrp, { paperWidth: 58 });
+    expect(canvas58.width).toBe(384);
+    const bytes58 = buildReceiptEscPos(saleWithMrp, { paperWidth: 58 });
+    expect(bytes58.length).toBeGreaterThan(50);
+  });
 });
 
 describe("Code 128 Barcode Generator Tests", () => {
@@ -159,7 +186,7 @@ describe("Dynamic UPI QR Code Generator Tests", () => {
     });
 
     expect(uri).toContain("upi://pay?");
-    expect(uri).toContain("pa=merchant%40okhdfcbank");
+    expect(uri).toContain("pa=merchant@okhdfcbank");
     expect(uri).toContain("am=499.50");
     expect(uri).toContain("cu=INR");
     expect(uri).toContain("tn=Invoice%20INV-999");

@@ -26,7 +26,7 @@ export const ManageSalesProfitModal: React.FC<ManageSalesProfitModalProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -311,7 +311,7 @@ export const ManageSalesProfitModal: React.FC<ManageSalesProfitModalProps> = ({
                 totalItems={totalItems}
                 onPageChange={setCurrentPage}
                 onPageSizeChange={setPageSize}
-                pageSizeOptions={[5, 10, 20]}
+                pageSizeOptions={[50, 100, 200, 500]}
               />
             </>
           )}

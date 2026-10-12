@@ -98,6 +98,7 @@ export function createMockDatabase() {
       price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       total_price REAL NOT NULL,
+      mrp REAL DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
     );
 

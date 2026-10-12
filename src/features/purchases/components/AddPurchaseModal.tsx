@@ -78,7 +78,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
 
   // Draft items pagination state
   const [itemsPage, setItemsPage] = useState(1);
-  const [itemsPageSize, setItemsPageSize] = useState(5);
+  const [itemsPageSize, setItemsPageSize] = useState(50);
 
   useEffect(() => {
     setItemsPage(1);
@@ -851,7 +851,7 @@ export const AddPurchaseModal: React.FC<AddPurchaseModalProps> = ({
                       totalItems={totalItems}
                       onPageChange={setItemsPage}
                       onPageSizeChange={setItemsPageSize}
-                      pageSizeOptions={[5, 10, 20]}
+                      pageSizeOptions={[50, 100, 200, 500]}
                     />
                   </>
                 );

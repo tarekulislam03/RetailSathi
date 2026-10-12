@@ -270,6 +270,7 @@ async function initTables(db: Database) {
       price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       total_price REAL NOT NULL,
+      mrp REAL DEFAULT 0,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
     );
   `);
@@ -362,6 +363,7 @@ async function initTables(db: Database) {
     "ALTER TABLE products ADD COLUMN gst_rate REAL DEFAULT 0",
     "ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0",
     "ALTER TABLE sales ADD COLUMN marketing_person_id INTEGER",
+    "ALTER TABLE sale_items ADD COLUMN mrp REAL DEFAULT 0",
     "ALTER TABLE purchase_items ADD COLUMN batch_no TEXT",
     "ALTER TABLE purchase_items ADD COLUMN mrp REAL DEFAULT 0",
     "ALTER TABLE purchase_items ADD COLUMN gst_rate REAL DEFAULT 0",

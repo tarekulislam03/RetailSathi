@@ -165,7 +165,7 @@ export function createReceiptCanvas(
     850 +
     items.length * 60 +
     (showBarcode ? 140 : 0) +
-    (showUpiQr ? 280 : 0) +
+    (showUpiQr ? 450 : 0) +
     (showHeader ? 300 : 0) +
     (showHeader && options?.logoImage ? 280 : 0);
 
@@ -257,11 +257,12 @@ export function createReceiptCanvas(
       y += h + 12;
     }
     const storeName = store?.name || "RETAIL SATHI SUPERMARKET";
-    const nameFontSize = canvasWidth === 384 ? 64 : 88; // Reduced by 8px
+    const nameFontSize = canvasWidth === 384 ? 52 : 72;
     y = drawCenteredText(storeName, `bold ${nameFontSize}px sans-serif`, y);
 
     if (store?.tagline) {
-      y = drawCenteredText(store.tagline, "20px sans-serif", y);
+      const taglineFontSize = canvasWidth === 384 ? 22 : 26;
+      y = drawCenteredText(store.tagline, `${taglineFontSize}px sans-serif`, y);
     }
     if (store?.promo_text) {
       y = drawCenteredText(`* ${store.promo_text} *`, "bold 20px sans-serif", y);
@@ -317,17 +318,18 @@ export function createReceiptCanvas(
   ctx.textAlign = "left";
 
   if (canvasWidth === 576) {
-    ctx.fillText("S#", margin, y);
-    ctx.fillText("Item Name", margin + 45, y);
+    ctx.fillText("Item Name", margin, y);
     ctx.textAlign = "right";
-    ctx.fillText("Qty", margin + 310, y);
-    ctx.fillText("Rate", margin + 420, y);
+    ctx.fillText("Qty", margin + 280, y);
+    ctx.fillText("MRP", margin + 365, y);
+    ctx.fillText("Rate", margin + 450, y);
     ctx.fillText("Amount", canvasWidth - margin, y);
   } else {
     ctx.fillText("Item Name", margin, y);
     ctx.textAlign = "right";
-    ctx.fillText("Qty", margin + 200, y);
-    ctx.fillText("Rate", margin + 280, y);
+    ctx.fillText("Qty", margin + 185, y);
+    ctx.fillText("MRP", margin + 245, y);
+    ctx.fillText("Rate", margin + 305, y);
     ctx.fillText("Amt", canvasWidth - margin, y);
   }
   y += 10;
@@ -337,51 +339,55 @@ export function createReceiptCanvas(
   let totalQty = 0;
   ctx.font = "20px sans-serif"; // 1.8rem
 
-  items.forEach((item, index) => {
+  items.forEach((item) => {
     totalQty += item.quantity;
-    const sNo = String(index + 1);
     const name = item.product_name || "Item";
     const qtyStr = String(item.quantity);
+    const itemMrp = item.mrp && item.mrp > 0 ? item.mrp : item.price;
+    const mrpStr = itemMrp.toFixed(2);
     const rateStr = item.price.toFixed(2);
     const amtStr = item.total_price.toFixed(2);
 
     if (canvasWidth === 576) {
-      const maxNameWidth = 200;
+      const maxNameWidth = 220;
       ctx.textAlign = "left";
-      ctx.fillText(sNo, margin, y);
 
       if (ctx.measureText(name).width <= maxNameWidth) {
-        ctx.fillText(name, margin + 45, y);
+        ctx.fillText(name, margin, y);
         ctx.textAlign = "right";
-        ctx.fillText(qtyStr, margin + 310, y);
-        ctx.fillText(rateStr, margin + 420, y);
+        ctx.fillText(qtyStr, margin + 280, y);
+        ctx.fillText(mrpStr, margin + 365, y);
+        ctx.fillText(rateStr, margin + 450, y);
         ctx.fillText(amtStr, canvasWidth - margin, y);
         y += 36;
       } else {
-        ctx.fillText(name, margin + 45, y);
+        ctx.fillText(name, margin, y);
         y += 32;
         ctx.textAlign = "right";
-        ctx.fillText(qtyStr, margin + 310, y);
-        ctx.fillText(rateStr, margin + 420, y);
+        ctx.fillText(qtyStr, margin + 280, y);
+        ctx.fillText(mrpStr, margin + 365, y);
+        ctx.fillText(rateStr, margin + 450, y);
         ctx.fillText(amtStr, canvasWidth - margin, y);
         y += 36;
       }
     } else {
-      const maxNameWidth = 150;
+      const maxNameWidth = 140;
       ctx.textAlign = "left";
       if (ctx.measureText(name).width <= maxNameWidth) {
         ctx.fillText(name, margin, y);
         ctx.textAlign = "right";
-        ctx.fillText(qtyStr, margin + 200, y);
-        ctx.fillText(rateStr, margin + 280, y);
+        ctx.fillText(qtyStr, margin + 185, y);
+        ctx.fillText(mrpStr, margin + 245, y);
+        ctx.fillText(rateStr, margin + 305, y);
         ctx.fillText(amtStr, canvasWidth - margin, y);
         y += 36;
       } else {
         ctx.fillText(name, margin, y);
         y += 32;
         ctx.textAlign = "right";
-        ctx.fillText(qtyStr, margin + 200, y);
-        ctx.fillText(rateStr, margin + 280, y);
+        ctx.fillText(qtyStr, margin + 185, y);
+        ctx.fillText(mrpStr, margin + 245, y);
+        ctx.fillText(rateStr, margin + 305, y);
         ctx.fillText(amtStr, canvasWidth - margin, y);
         y += 36;
       }
@@ -477,9 +483,9 @@ export function createReceiptCanvas(
   }
 
   // 8. DYNAMIC UPI QR CODE
-  if (showUpiQr && store?.upi_id) {
+  if (showUpiQr && store?.upi_id?.trim()) {
     y += 14;
-    y = drawCenteredText("SCAN & PAY VIA UPI", "bold 16px sans-serif", y);
+    y = drawCenteredText("SCAN & PAY VIA UPI", "bold 18px sans-serif", y);
     try {
       const upiUri = generateUpiUri({
         upiId: store.upi_id,
@@ -488,9 +494,15 @@ export function createReceiptCanvas(
         invoiceNo: sale.invoice_no,
       });
       const qr = generateQrMatrix(upiUri);
-      const moduleSize = canvasWidth === 384 ? 4 : 5;
+      const targetQrWidth = canvasWidth === 384 ? 200 : 260;
+      const moduleSize = Math.max(3, Math.floor(targetQrWidth / qr.size));
       const qrW = qr.size * moduleSize;
-      const startX = (canvasWidth - qrW) / 2;
+      const startX = Math.round((canvasWidth - qrW) / 2);
+
+      // Quiet zone (clean white border ensuring cameras detect finder patterns)
+      const quietZone = moduleSize * 2;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(startX - quietZone, y - quietZone, qrW + quietZone * 2, qrW + quietZone * 2);
 
       ctx.fillStyle = "#000000";
       for (let r = 0; r < qr.size; r++) {
@@ -500,13 +512,13 @@ export function createReceiptCanvas(
           }
         }
       }
-      y += qrW + 16;
-    } catch {
-      // ignore
+      y += qrW + quietZone + 14;
+    } catch (qrErr) {
+      console.warn("[Receipt] Failed to render dynamic UPI QR:", qrErr);
     }
-    y = drawCenteredText(`UPI ID: ${store.upi_id}`, "16px sans-serif", y);
-    y = drawCenteredText("GPay | PhonePe | Paytm | BHIM", "24px sans-serif", y);
-    y = drawCenteredText(`Powered by Retail Sathi`,  "16px sans-serif", y);
+    y = drawCenteredText(`UPI ID: ${store.upi_id.trim()}`, "16px sans-serif", y);
+    y = drawCenteredText("GPay | PhonePe | Paytm | BHIM", "22px sans-serif", y);
+    y = drawCenteredText(`Powered by Retail Sathi`, "16px sans-serif", y);
   }
 
   y += 32;

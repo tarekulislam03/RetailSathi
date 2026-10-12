@@ -22,7 +22,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 }) => {
   const items = sale.items || [];
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(50);
 
   const [storeInfo, setStoreInfo] = useState<StoreReceiptInfo | null>(null);
   const [printers, setPrinters] = useState<PrinterDevice[]>([]);
@@ -347,26 +347,31 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <table className="product-table" style={{ width: "100%", margin: 0, fontSize: "0.84rem" }}>
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
-                  <th style={{ textAlign: "left", padding: "8px 10px" }}>Item</th>
-                  <th style={{ textAlign: "right", padding: "8px 10px", width: "80px" }}>Rate</th>
+                  <th style={{ textAlign: "left", padding: "8px 10px" }}>Item Name</th>
                   <th style={{ textAlign: "center", padding: "8px 10px", width: "50px" }}>Qty</th>
-                  <th style={{ textAlign: "right", padding: "8px 10px", width: "90px" }}>Total</th>
+                  <th style={{ textAlign: "right", padding: "8px 10px", width: "80px" }}>MRP</th>
+                  <th style={{ textAlign: "right", padding: "8px 10px", width: "80px" }}>Rate</th>
+                  <th style={{ textAlign: "right", padding: "8px 10px", width: "90px" }}>Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {paginatedItems.map((item, idx) => (
-                  <tr key={idx} style={{ borderTop: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "8px 10px", fontWeight: 500 }}>{item.product_name}</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right", color: "#475569" }}>₹{item.price.toFixed(2)}</td>
-                    <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 600 }}>{item.quantity}</td>
-                    <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>₹{item.total_price.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {paginatedItems.map((item, idx) => {
+                  const itemMrp = item.mrp && item.mrp > 0 ? item.mrp : item.price;
+                  return (
+                    <tr key={idx} style={{ borderTop: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "8px 10px", fontWeight: 500 }}>{item.product_name}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 600 }}>{item.quantity}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "#64748b" }}>₹{itemMrp.toFixed(2)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", color: "#475569" }}>₹{item.price.toFixed(2)}</td>
+                      <td style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>₹{item.total_price.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          {totalItems > 5 && (
+          {totalItems > pageSize && (
             <div style={{ marginBottom: "12px" }}>
               <Pagination
                 currentPage={safePage}
@@ -375,7 +380,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 totalItems={totalItems}
                 onPageChange={setCurrentPage}
                 onPageSizeChange={setPageSize}
-                pageSizeOptions={[5, 10, 20]}
+                pageSizeOptions={[50, 100, 200, 500]}
               />
             </div>
           )}

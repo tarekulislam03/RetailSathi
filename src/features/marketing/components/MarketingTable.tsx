@@ -18,7 +18,7 @@ export const MarketingTable: React.FC<MarketingTableProps> = ({
   onViewDetails,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     setCurrentPage(1);

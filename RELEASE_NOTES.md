@@ -1,10 +1,10 @@
-# Retail Sathi v0.2.0 - Billing Price Control, Quick POS Product Addition & Inventory Reversion
+# Retail Sathi v0.2.1 - Receipt MRP Column, Dynamic UPI QR Fix & Standardized 50-Item Pagination
 
 ### 🚀 Key Features & Enhancements
-- **Dynamic Cart MRP & Selling Price Editing**: Cashiers can now edit both the MRP and Selling Price directly within the POS cart table. When finalizing a checkout, updated MRP and price values automatically synchronize to the product inventory database and appear accurately on the generated receipt.
-- **Accidental Billing & Quick Product Creation**: Added a dedicated "+ Quick Add Product" button in the Billing page cart section. If a customer presents an item not yet entered in inventory, cashiers can register product details on the fly and continue billing without interrupting the checkout workflow.
-- **Reliable Sale Deletion & Stock Restoration**: Deleting a sale now reliably restores inventory quantities (`stock`) across all line items with multi-tier fallback matching (by product ID, barcode, and product name). Local views and tables instantly reload via live update notifications.
-- **Label Printing Selection Reset**: Fixed an issue where selected items remained ticked in the bulk label printing dialog after print completion. Checkboxes and counts now cleanly reset upon successful printing or closing.
+- **Receipt Items MRP Column**: Added a dedicated `MRP` column in the items table (`Item Name | Qty | MRP | Rate | Amount`) across both the on-screen customer receipt preview and thermal ESC/POS print rendering (optimized for both 80mm and 58mm receipt rolls).
+- **Thermal Receipt Typography Optimization**: Refined header proportions by moderating the store name font size and increasing the store tagline font size for enhanced clarity and aesthetic balance.
+- **Dynamic UPI QR Code Reliability**: Completely resolved dynamic UPI QR rendering by integrating the robust ISO/IEC 18004 compliant `qrcode` engine, strictly formatting NPCI UPI payment strings (preserving unencoded VPA `@` handles), adding quiet-zone margins, and ensuring reliable image cache invalidation.
+- **Standardized 50-Item Pagination**: Standardized the default table pagination across the entire app to 50 items per page with selectable increments of `50, 100, 200, 500` (applied across Inventory, Sales History, Purchases, Customers, Suppliers, Stock Ledger, Marketing, and related modals).
 
 ---
 *Retail Sathi Automatic Online Update System*

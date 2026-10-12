@@ -332,12 +332,16 @@ export async function updateStore(
   const db = await getDb();
 
   // Receipt/printer/label settings live in the settings table (synced to cloud);
-  // only core store fields (name, code, ...) remain in the stores table.
+  // also kept synchronized in the stores table for direct queries.
   const input: UpdateStoreInput = {};
   const settingsPart: Record<string, any> = {};
   for (const [k, v] of Object.entries(fullInput)) {
     if (ALL_SETTING_KEYS.includes(k)) settingsPart[k] = v;
-    else (input as any)[k] = v;
+    (input as any)[k] = v;
+  }
+
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem("last_receipt_store_info");
   }
 
   const updates: string[] = [];

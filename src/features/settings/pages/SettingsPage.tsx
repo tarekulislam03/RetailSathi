@@ -246,6 +246,10 @@ export const SettingsPage: React.FC = () => {
         throw new Error(res.error || "Failed to save settings.");
       }
 
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem("last_receipt_store_info");
+      }
+
       saveLabelSettingsToStorage({
         printerName: barcodePrinter || undefined,
         labelWidthMm: labelWidth,

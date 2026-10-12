@@ -480,8 +480,8 @@ async function pullSales(): Promise<void> {
   if (!siError && saleItemsData && saleItemsData.length > 0) {
     for (const it of saleItemsData) {
       await rawExecute(
-        `INSERT INTO sale_items (id, sale_id, product_id, product_name, barcode, price, quantity, total_price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO sale_items (id, sale_id, product_id, product_name, barcode, price, quantity, total_price, mrp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT(id) DO UPDATE SET
            sale_id = excluded.sale_id,
            product_id = excluded.product_id,
@@ -489,7 +489,8 @@ async function pullSales(): Promise<void> {
            barcode = excluded.barcode,
            price = excluded.price,
            quantity = excluded.quantity,
-           total_price = excluded.total_price`,
+           total_price = excluded.total_price,
+           mrp = excluded.mrp`,
         [
           it.id,
           it.sale_id,
@@ -499,6 +500,7 @@ async function pullSales(): Promise<void> {
           Number(it.price) || 0,
           Number(it.quantity) || 0,
           Number(it.total_price) || 0,
+          Number(it.mrp) || Number(it.price) || 0,
         ]
       );
     }

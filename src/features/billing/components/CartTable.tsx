@@ -22,7 +22,7 @@ export const CartTable: React.FC<CartTableProps> = ({
   onOpenAddProduct,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(50);
 
   const totalItems = cart.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -232,7 +232,7 @@ export const CartTable: React.FC<CartTableProps> = ({
             totalItems={totalItems}
             onPageChange={setCurrentPage}
             onPageSizeChange={handlePageSizeChange}
-            pageSizeOptions={[5, 10, 20]}
+            pageSizeOptions={[50, 100, 200, 500]}
           />
         </>
       )}

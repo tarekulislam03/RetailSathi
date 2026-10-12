@@ -20,7 +20,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
   onDelete,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
   const [labelProduct, setLabelProduct] = useState<Product | null>(null);
 
   // Reset to first page only when the search term changes

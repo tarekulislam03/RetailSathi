@@ -37,7 +37,7 @@ export const ManageSuppliersModal: React.FC<ManageSuppliersModalProps> = ({
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(50);
 
   const loadData = async () => {
     setLoading(true);
@@ -355,7 +355,7 @@ export const ManageSuppliersModal: React.FC<ManageSuppliersModalProps> = ({
                 totalItems={totalItems}
                 onPageChange={setCurrentPage}
                 onPageSizeChange={setPageSize}
-                pageSizeOptions={[5, 10, 20, 50]}
+                pageSizeOptions={[50, 100, 200, 500]}
               />
             </>
           )}

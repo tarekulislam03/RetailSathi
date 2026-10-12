@@ -13,7 +13,7 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({
   searchTerm,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     setCurrentPage(1);

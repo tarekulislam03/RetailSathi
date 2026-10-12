@@ -23,7 +23,7 @@ export const LowStockModal: React.FC<LowStockModalProps> = ({
   const [filterType, setFilterType] = useState<"all" | "out" | "low">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(6);
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -303,7 +303,7 @@ export const LowStockModal: React.FC<LowStockModalProps> = ({
                     </table>
                   </div>
 
-                  {totalItems > 6 && (
+                  {totalItems > pageSize && (
                     <Pagination
                       currentPage={safePage}
                       totalPages={totalPages}
@@ -311,7 +311,7 @@ export const LowStockModal: React.FC<LowStockModalProps> = ({
                       totalItems={totalItems}
                       onPageChange={setCurrentPage}
                       onPageSizeChange={handlePageSizeChange}
-                      pageSizeOptions={[6, 12, 24]}
+                      pageSizeOptions={[50, 100, 200, 500]}
                     />
                   )}
                 </>

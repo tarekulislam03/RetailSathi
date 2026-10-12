@@ -39,10 +39,10 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
 
   // Pagination states
   const [salesPage, setSalesPage] = useState(1);
-  const [salesPageSize, setSalesPageSize] = useState(5);
+  const [salesPageSize, setSalesPageSize] = useState(50);
 
   const [itemsPage, setItemsPage] = useState(1);
-  const [itemsPageSize, setItemsPageSize] = useState(5);
+  const [itemsPageSize, setItemsPageSize] = useState(50);
 
   async function loadPurchases() {
     if (!customer) return;
@@ -312,7 +312,7 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
                     totalItems={itemsTotalItems}
                     onPageChange={setItemsPage}
                     onPageSizeChange={setItemsPageSize}
-                    pageSizeOptions={[5, 10, 20]}
+                    pageSizeOptions={[50, 100, 200, 500]}
                   />
                 </>
               )}
@@ -423,7 +423,7 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
                 totalItems={salesTotalItems}
                 onPageChange={setSalesPage}
                 onPageSizeChange={setSalesPageSize}
-                pageSizeOptions={[5, 10, 20, 50]}
+                pageSizeOptions={[50, 100, 200, 500]}
               />
             </>
           )}

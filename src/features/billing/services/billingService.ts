@@ -135,9 +135,10 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
   const saleItems: SaleItem[] = [];
   for (const item of input.items) {
     const itemTotal = item.price * item.quantity;
+    const itemMrp = item.mrp !== undefined && item.mrp > 0 ? item.mrp : item.price;
     await db.execute(
-      `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, price, quantity, total_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, price, quantity, total_price, mrp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         saleId,
         item.product_id,
@@ -146,6 +147,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
         item.price,
         item.quantity,
         itemTotal,
+        itemMrp,
       ]
     );
 
@@ -439,9 +441,10 @@ export async function updateSale(
   const newSaleItems: SaleItem[] = [];
   for (const item of input.items) {
     const itemTotal = item.price * item.quantity;
+    const itemMrp = item.mrp !== undefined && item.mrp > 0 ? item.mrp : item.price;
     await db.execute(
-      `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, price, quantity, total_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, price, quantity, total_price, mrp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         saleId,
         item.product_id,
@@ -450,6 +453,7 @@ export async function updateSale(
         item.price,
         item.quantity,
         itemTotal,
+        itemMrp,
       ]
     );
     newSaleItems.push({
@@ -460,6 +464,7 @@ export async function updateSale(
       price: item.price,
       quantity: item.quantity,
       total_price: itemTotal,
+      mrp: itemMrp,
     });
   }
 
