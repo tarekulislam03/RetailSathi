@@ -3,6 +3,12 @@ import { buildReceiptEscPos, createReceiptCanvas } from "../services/escposServi
 import { Sale } from "../features/billing/types";
 import { generateCode128Svg, encodeCode128 } from "../utils/code128";
 import {
+  encodeEan13,
+  generateEan13Svg,
+  invoiceToEan13,
+  calculateEan13CheckDigit,
+} from "../utils/ean13";
+import {
   generateUpiUri,
   generateQrSvg,
   generateQrMatrix,
@@ -173,6 +179,47 @@ describe("Code 128 Barcode Generator Tests", () => {
     expect(svg).toContain("</svg>");
     expect(svg).toContain("<rect");
     expect(svg).toContain("INV-2026-001");
+  });
+});
+
+describe("EAN-13 Barcode Generator Tests", () => {
+  it("should calculate correct standard EAN-13 modulo 10 check digit", () => {
+    // 890601007026 -> 7
+    expect(calculateEan13CheckDigit("890601007026")).toBe("7");
+    // 200959561520 -> 8
+    expect(calculateEan13CheckDigit("200959561520")).toBe("8");
+    // 123456789012 -> 8
+    expect(calculateEan13CheckDigit("123456789012")).toBe("8");
+  });
+
+  it("should convert invoice string to 13-digit EAN-13", () => {
+    const ean = invoiceToEan13("INV-20261014-232139-704");
+    expect(ean).toHaveLength(13);
+    expect(ean.startsWith("261014232139")).toBe(true);
+
+    const numericEan = invoiceToEan13("8906010070267");
+    expect(numericEan).toBe("8906010070267");
+  });
+
+  it("should encode standard 95 modules for EAN-13", () => {
+    const res = encodeEan13("INV-20261014-232139-704");
+    expect(res.modules).toHaveLength(95);
+    // Start guard 101
+    expect(res.modules[0]).toBe(true);
+    expect(res.modules[1]).toBe(false);
+    expect(res.modules[2]).toBe(true);
+    // End guard 101
+    expect(res.modules[92]).toBe(true);
+    expect(res.modules[93]).toBe(false);
+    expect(res.modules[94]).toBe(true);
+  });
+
+  it("should generate valid SVG markup for EAN-13", () => {
+    const svg = generateEan13Svg("INV-20261014-232139-704");
+    expect(svg).toContain("<svg");
+    expect(svg).toContain("</svg>");
+    expect(svg).toContain("<rect");
+    expect(svg).toContain("2 610142 321390");
   });
 });
 

@@ -6,6 +6,7 @@ import {
   PurchaseStatsData,
 } from "../types";
 import { Product } from "../../inventory/types";
+import { getRealTime } from "../../../services/realTimeService";
 
 export async function getAllPurchases(): Promise<Purchase[]> {
   const db = await getDb();
@@ -49,16 +50,8 @@ export async function createPurchase(
     0
   );
 
-  const now = new Date();
-  const formattedDate = now.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+  const now = getRealTime();
+  const formattedDate = now.toISOString();
 
   const insertRes = await db.execute(
     `INSERT INTO purchases (supplier_name, invoice_no, purchase_date, gst_no, contact_no, total_amount, item_count, created_at)

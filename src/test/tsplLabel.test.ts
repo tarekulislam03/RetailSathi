@@ -72,8 +72,10 @@ describe("TSPL Label Generator for DCode DC421 Pro", () => {
     expect(tspl).toContain("CLS");
     expect(tspl).toContain('BARCODE');
     expect(tspl).toContain('"128"');
-    expect(tspl).toContain("MRP Rs.30.00");
-    expect(tspl).toContain("MRP Rs.275.00");
+    expect(tspl).toContain("RATE: Rs.28.00");
+    expect(tspl).toContain("RATE: Rs.250.00");
+    expect(tspl).toContain(',90,1,1,"MRP Rs.30.00"');
+    expect(tspl).toContain(',90,1,1,"MRP Rs.275.00"');
     expect(tspl).toContain("PRINT 1,1");
     expect(tspl.endsWith("\r\n")).toBe(true);
   });

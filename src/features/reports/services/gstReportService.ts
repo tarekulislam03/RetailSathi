@@ -243,7 +243,7 @@ export async function fetchGstReportData(
       COALESCE(pr.gst_rate, 0) AS gst_rate,
       COALESCE(pr.category, 'General') AS category
     FROM sale_items si
-    JOIN sales s ON si.sale_id = s.id
+    JOIN sales s ON (si.invoice_no IS NOT NULL AND si.invoice_no != '' AND si.invoice_no = s.invoice_no) OR (si.sale_id = s.id)
     LEFT JOIN products pr ON si.product_id = pr.id
     ORDER BY s.created_at DESC, s.id DESC
   `);

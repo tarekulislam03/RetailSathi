@@ -321,36 +321,41 @@ export function buildLabelRow(
     const storeName = sanitizeTsplText(item.storeName || "");
     const prodName = sanitizeTsplText(item.name || "Item");
     const barcodeRaw = (item.barcode || "").trim();
-    const mrpValue = item.mrp && item.mrp > 0 ? item.mrp : item.price || 0;
+    const rateValue = item.price || 0;
+    const mrpValue = item.mrp && item.mrp > 0 ? item.mrp : rateValue;
+
+    const rateStr = `RATE: Rs.${rateValue.toFixed(2)}`;
     const mrpStr = `MRP Rs.${mrpValue.toFixed(2)}`;
+
+    // Reserve 16 dots on the right for the rotated MRP text in small font (font "1" = 8x12 dots)
+    const mrpReservedWidthDots = 18;
+    const contentWidthDots = Math.max(16, innerWidthDots - mrpReservedWidthDots);
 
     // 1. Font selections and widths
     const storeFontKey = innerHeightDots >= 140 ? "3" : "2";
-    const fittedStore = storeName ? fitTextToWidth(storeName, innerWidthDots, storeFontKey) : null;
+    const fittedStore = storeName ? fitTextToWidth(storeName, contentWidthDots, storeFontKey) : null;
 
     const prodFontKey = innerHeightDots < 120 ? "1" : "2";
-    const fittedName = fitTextToWidth(prodName, innerWidthDots, prodFontKey);
+    const fittedName = fitTextToWidth(prodName, contentWidthDots, prodFontKey);
 
-    const mrpFontKey = innerHeightDots < 100 ? "1" : "2";
-    const fittedMrp = fitTextToWidth(mrpStr, innerWidthDots, mrpFontKey);
-    const mrpFontH = FONT_CELL_WIDTHS[mrpFontKey].height;
+    const rateFontKey = innerHeightDots < 100 ? "1" : "2";
+    const fittedRate = fitTextToWidth(rateStr, contentWidthDots, rateFontKey);
+    const rateFontH = FONT_CELL_WIDTHS[rateFontKey].height;
 
-    // 2. Barcode calculation (widen barcode to fill width cleanly without overflowing)
+    // 2. Barcode calculation (widen barcode to fill content width cleanly without overflowing)
     const isEan = isValidEan13(barcodeRaw);
     const barcodeType = isEan ? "EAN13" : "128";
-    const humanReadableReservedDots = 18;
 
     // Try 3 dots first to widen barcode and fill empty space, fallback to 2 or 1 if needed
     let narrowBar = 2;
-    if (calculateBarcodeWidthDots(barcodeRaw, isEan, 3) <= innerWidthDots) {
+    if (calculateBarcodeWidthDots(barcodeRaw, isEan, 3) <= contentWidthDots) {
       narrowBar = 3;
-    } else if (calculateBarcodeWidthDots(barcodeRaw, isEan, 2) <= innerWidthDots) {
+    } else if (calculateBarcodeWidthDots(barcodeRaw, isEan, 2) <= contentWidthDots) {
       narrowBar = 2;
     } else {
       narrowBar = 1;
     }
     const wideBar = narrowBar;
-    const bcWidthDots = calculateBarcodeWidthDots(barcodeRaw, isEan, narrowBar);
 
     // 3. Left-aligned origin within the label safe area
     const startX = colX + paddingDots;
@@ -360,10 +365,10 @@ export function buildLabelRow(
     const gapStoreToName = fittedStore ? 16 : 0; // Distinct margin below store name to separate from product info (~2mm)
     const prodH = FONT_CELL_WIDTHS[fittedName.font].height;
     const gapNameToBarcode = 6;
-    const gapBarcodeToMrp = 5; // Tight gap between barcode and MRP
+    const gapBarcodeToRate = 5; // Tight gap between barcode and RATE
 
     // Barcode height (without human-readable text)
-    const usedNonBarcodeH = storeH + gapStoreToName + prodH + gapNameToBarcode + gapBarcodeToMrp + mrpFontH;
+    const usedNonBarcodeH = storeH + gapStoreToName + prodH + gapNameToBarcode + gapBarcodeToRate + rateFontH;
     const barcodeH = Math.max(26, Math.min(65, innerHeightDots - usedNonBarcodeH));
 
     const totalContentH = usedNonBarcodeH + barcodeH;
@@ -385,10 +390,17 @@ export function buildLabelRow(
     lines.push(
       `BARCODE ${startX},${bcY},"${barcodeType}",${barcodeH},0,0,${narrowBar},${wideBar},"${barcodeRaw}"`
     );
-    currentY += barcodeH + gapBarcodeToMrp;
+    currentY += barcodeH + gapBarcodeToRate;
 
-    // 4. MRP (strictly left-aligned, directly below barcode bars)
-    lines.push(`TEXT ${startX},${currentY},"${fittedMrp.font}",0,1,1,"${fittedMrp.text}"`);
+    // 4. Selling Rate (strictly left-aligned, directly below barcode bars)
+    lines.push(`TEXT ${startX},${currentY},"${fittedRate.font}",0,1,1,"${fittedRate.text}"`);
+
+    // 5. MRP in small font at the right side of the label rotating 90 degree
+    // In TSPL rotation 90 draws downwards along +Y with character height to the left (-X).
+    const mrpX = colX + paddingDots + innerWidthDots - 3;
+    const mrpTextLenDots = mrpStr.length * FONT_CELL_WIDTHS["1"].width;
+    const mrpY = colY + paddingDots + Math.max(0, Math.round((innerHeightDots - mrpTextLenDots) / 2));
+    lines.push(`TEXT ${mrpX},${mrpY},"1",90,1,1,"${mrpStr}"`);
   }
 
   lines.push("PRINT 1,1");

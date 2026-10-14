@@ -1,5 +1,7 @@
 import { getDb } from "../../../services/database";
 import { Sale, SaleItem } from "../../billing/types";
+import { parseSaleDate } from "../../../utils/dateUtils";
+import { getRealTime } from "../../../services/realTimeService";
 export { fetchSaleDetails, updateSale, deleteSale } from "../../billing/services/billingService";
 
 
@@ -29,15 +31,14 @@ export async function fetchSalesWithItems(): Promise<{
     LEFT JOIN products p ON si.product_id = p.id
   `);
 
-  // Map items to sales
+  // Map items to sales by sale_id AND invoice_no for maximum resilience
   const itemsMap: Record<number, SaleItem[]> = {};
+  const itemsByInvoiceMap: Record<string, SaleItem[]> = {};
   for (const item of allItems) {
-    if (!itemsMap[item.sale_id]) {
-      itemsMap[item.sale_id] = [];
-    }
-    itemsMap[item.sale_id].push({
+    const saleItem: SaleItem = {
       id: item.id,
       sale_id: item.sale_id,
+      invoice_no: item.invoice_no,
       product_id: item.product_id,
       product_name: item.product_name,
       barcode: item.barcode || "",
@@ -45,10 +46,18 @@ export async function fetchSalesWithItems(): Promise<{
       quantity: item.quantity,
       total_price: item.total_price,
       ...item,
-    });
+    };
+    if (item.sale_id) {
+      if (!itemsMap[item.sale_id]) itemsMap[item.sale_id] = [];
+      itemsMap[item.sale_id].push(saleItem);
+    }
+    if (item.invoice_no) {
+      if (!itemsByInvoiceMap[item.invoice_no]) itemsByInvoiceMap[item.invoice_no] = [];
+      itemsByInvoiceMap[item.invoice_no].push(saleItem);
+    }
   }
 
-  const now = new Date();
+  const now = getRealTime();
   const todayDay = now.getDate();
   const todayMonth = now.getMonth();
   const todayYear = now.getFullYear();
@@ -64,13 +73,13 @@ export async function fetchSalesWithItems(): Promise<{
   let todayOrdersCount = 0;
 
   for (const sale of sales) {
-    sale.items = itemsMap[sale.id] || [];
+    sale.items = (sale.invoice_no && itemsByInvoiceMap[sale.invoice_no]) || itemsMap[sale.id] || [];
     totalRevenue += sale.grand_total;
     const saleTax = sale.tax_amount || 0;
     totalGst += saleTax;
 
     // Date parsing
-    const saleDate = sale.created_at ? new Date(sale.created_at) : null;
+    const saleDate = parseSaleDate(sale.created_at, sale.invoice_no);
     const isToday =
       saleDate &&
       !isNaN(saleDate.getTime()) &&
@@ -87,11 +96,13 @@ export async function fetchSalesWithItems(): Promise<{
     // Fallback string matching for en-IN formatted created_at
     const dateString = sale.created_at || "";
     const todayStr = now.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "short",
       year: "numeric",
     });
     const monthStr = now.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
       month: "short",
       year: "numeric",
     });

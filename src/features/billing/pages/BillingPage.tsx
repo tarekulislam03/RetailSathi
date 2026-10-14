@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Product, ProductInput } from "../../inventory/types";
 import { fetchProducts, createProduct } from "../../inventory/services/inventoryService";
 import { Customer } from "../../customers/types";
@@ -6,12 +6,20 @@ import { fetchCustomers } from "../../customers/services/customerService";
 import { MarketingPerson } from "../../marketing/types";
 import { fetchMarketingPersons } from "../../marketing/services/marketingService";
 import { createSale, fetchTodayBillsCount } from "../services/billingService";
-import { CartItem, Sale } from "../types";
+import { CartItem, Sale, HeldBill } from "../types";
 import { BarcodeSearch } from "../components/BarcodeSearch";
 import { CartTable } from "../components/CartTable";
 import { CheckoutPanel } from "../components/CheckoutPanel";
 import { ReceiptModal } from "../components/ReceiptModal";
 import { ProductModal } from "../../inventory/components/ProductModal";
+import { ReturnModal } from "../components/ReturnModal";
+import { HeldBillsModal } from "../components/HeldBillsModal";
+import {
+  getHeldBills,
+  saveHeldBill,
+  removeHeldBill,
+  clearAllHeldBills,
+} from "../services/heldBillsService";
 
 import { pullDataFromCloud } from "../../../services/syncProcessor";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
@@ -23,6 +31,8 @@ export const BillingPage: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [todayBillsCount, setTodayBillsCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const isCheckingOutRef = useRef(false);
 
   // Customer & Bill Form
   const [customerName, setCustomerName] = useState("");
@@ -35,6 +45,14 @@ export const BillingPage: React.FC = () => {
 
   // Quick Add Product Modal (for accidental billing of items not yet in inventory)
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+
+  // Sales Return & Exchange Modal
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+
+  // Held Bills (Park & Resume Orders)
+  const [heldBills, setHeldBills] = useState<HeldBill[]>(() => getHeldBills());
+  const [isHeldBillsOpen, setIsHeldBillsOpen] = useState(false);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   async function loadBillingData() {
     try {
@@ -79,11 +97,37 @@ export const BillingPage: React.FC = () => {
   // Constant live refresh: syncs every 2.5 seconds, on window focus, and on database sync events
   useDbRefresh(loadBillingData, 2500);
 
+  const handleHoldBillRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     loadBillingData();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F4") {
+        e.preventDefault();
+        setIsReturnModalOpen((prev) => !prev);
+      } else if (e.key === "F6") {
+        e.preventDefault();
+        handleHoldBillRef.current?.();
+      } else if (e.key === "F7") {
+        e.preventDefault();
+        setIsHeldBillsOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
+  const lastAddRef = useRef<{ id: number; time: number }>({ id: 0, time: 0 });
+
   function handleAddToCart(product: Product) {
+    const now = Date.now();
+    if (lastAddRef.current.id === product.id && now - lastAddRef.current.time < 200) {
+      return;
+    }
+    lastAddRef.current = { id: product.id, time: now };
+
     if (product.stock <= 0) {
       setError(`"${product.name}" is out of stock!`);
       return;
@@ -175,10 +219,16 @@ export const BillingPage: React.FC = () => {
     cashPaid: number;
     upiPaid: number;
   }) {
+    if (isCheckingOutRef.current || isCheckingOut) {
+      return;
+    }
     if (cart.length === 0) {
       setError("Cannot checkout: Cart is empty.");
       return;
     }
+
+    isCheckingOutRef.current = true;
+    setIsCheckingOut(true);
 
     try {
       setError(null);
@@ -239,7 +289,109 @@ export const BillingPage: React.FC = () => {
     } catch (err: any) {
       console.error("Checkout error:", err);
       setError(err?.message || "Failed to complete transaction.");
+    } finally {
+      isCheckingOutRef.current = false;
+      setIsCheckingOut(false);
     }
+  }
+
+  function handleHoldBill() {
+    if (cart.length === 0) {
+      setError("Cannot hold bill: Cart is empty.");
+      return;
+    }
+
+    const totalMRP = cart.reduce(
+      (acc, item) =>
+        acc + (item.product.mrp || item.product.price) * item.quantity,
+      0
+    );
+    const totalDiscount = cart.reduce((acc, item) => {
+      const mrp = item.product.mrp || item.product.price;
+      return acc + Math.max(0, mrp - item.product.price) * item.quantity;
+    }, 0);
+    const grandTotal = totalMRP - totalDiscount;
+    const totalQty = cart.reduce((acc, item) => acc + item.quantity, 0);
+
+    const saved = saveHeldBill({
+      customer_name: customerName.trim() || undefined,
+      customer_phone: customerPhone.trim() || undefined,
+      marketing_person_id: marketingPersonId,
+      payment_mode: paymentMode,
+      cart: [...cart],
+      total_mrp: totalMRP,
+      grand_total: grandTotal,
+      total_items: cart.length,
+      total_qty: totalQty,
+    });
+
+    setHeldBills(getHeldBills());
+
+    // Clear active cart & customer form so cashier can bill next customer immediately
+    setCart([]);
+    setCustomerName("");
+    setCustomerPhone("");
+    setMarketingPersonId(null);
+    setPaymentMode("Cash");
+    setError(null);
+    setInfoMsg(`✓ Order for "${saved.customer_name || 'Walk-in Customer'}" (₹${grandTotal.toFixed(2)}) is on hold.`);
+    setTimeout(() => setInfoMsg(null), 4000);
+  }
+
+  handleHoldBillRef.current = handleHoldBill;
+
+  function handleResumeBill(bill: HeldBill) {
+    // If current cart already has items, hold current cart first so nothing is lost!
+    if (cart.length > 0) {
+      const totalMRP = cart.reduce(
+        (acc, item) =>
+          acc + (item.product.mrp || item.product.price) * item.quantity,
+        0
+      );
+      const totalDiscount = cart.reduce((acc, item) => {
+        const mrp = item.product.mrp || item.product.price;
+        return acc + Math.max(0, mrp - item.product.price) * item.quantity;
+      }, 0);
+      const grandTotal = totalMRP - totalDiscount;
+      const totalQty = cart.reduce((acc, item) => acc + item.quantity, 0);
+
+      saveHeldBill({
+        customer_name: customerName.trim() || undefined,
+        customer_phone: customerPhone.trim() || undefined,
+        marketing_person_id: marketingPersonId,
+        payment_mode: paymentMode,
+        cart: [...cart],
+        total_mrp: totalMRP,
+        grand_total: grandTotal,
+        total_items: cart.length,
+        total_qty: totalQty,
+      });
+    }
+
+    // Load held bill into active cart & form
+    setCart(bill.cart);
+    setCustomerName(bill.customer_name || "");
+    setCustomerPhone(bill.customer_phone || "");
+    setMarketingPersonId(bill.marketing_person_id || null);
+    setPaymentMode(bill.payment_mode || "Cash");
+
+    // Remove resumed bill from held list
+    const updated = removeHeldBill(bill.id);
+    setHeldBills(updated);
+    setIsHeldBillsOpen(false);
+    setError(null);
+    setInfoMsg(`✓ Resumed order for "${bill.customer_name || 'Walk-in Customer'}".`);
+    setTimeout(() => setInfoMsg(null), 3000);
+  }
+
+  function handleDiscardHeldBill(id: string) {
+    const updated = removeHeldBill(id);
+    setHeldBills(updated);
+  }
+
+  function handleClearAllHeldBills() {
+    clearAllHeldBills();
+    setHeldBills([]);
   }
 
   return (
@@ -248,6 +400,40 @@ export const BillingPage: React.FC = () => {
         <div className="error-banner">
           <span>{error}</span>
           <button onClick={() => setError(null)}>X</button>
+        </div>
+      )}
+
+      {infoMsg && (
+        <div
+          style={{
+            background: "linear-gradient(to bottom, #ecfdf5 0%, #d1fae5 100%)",
+            border: "1px solid #6ee7b7",
+            color: "#065f46",
+            padding: "8px 14px",
+            borderRadius: "4px",
+            margin: "0 0 10px 0",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+          }}
+        >
+          <span>{infoMsg}</span>
+          <button
+            type="button"
+            onClick={() => setInfoMsg(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#065f46",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -268,6 +454,10 @@ export const BillingPage: React.FC = () => {
             onRemoveItem={handleRemoveItem}
             onClearCart={() => setCart([])}
             onOpenAddProduct={() => setIsAddProductOpen(true)}
+            onOpenReturnModal={() => setIsReturnModalOpen(true)}
+            onHoldBill={handleHoldBill}
+            onOpenHeldBills={() => setIsHeldBillsOpen(true)}
+            heldBillsCount={heldBills.length}
           />
         </div>
 
@@ -285,6 +475,7 @@ export const BillingPage: React.FC = () => {
             paymentMode={paymentMode}
             setPaymentMode={setPaymentMode}
             onCheckout={handleCheckout}
+            isProcessing={isCheckingOut}
           />
         </div>
       </div>
@@ -296,6 +487,30 @@ export const BillingPage: React.FC = () => {
           submitButtonText="Save to Inventory & Add to Cart"
           onSave={handleSaveNewProduct}
           onClose={() => setIsAddProductOpen(false)}
+        />
+      )}
+
+      {isReturnModalOpen && (
+        <ReturnModal
+          isOpen={isReturnModalOpen}
+          onClose={() => setIsReturnModalOpen(false)}
+          products={products}
+          onReturnComplete={(updatedSale) => {
+            setIsReturnModalOpen(false);
+            setCompletedSale(updatedSale);
+            loadBillingData();
+          }}
+        />
+      )}
+
+      {isHeldBillsOpen && (
+        <HeldBillsModal
+          isOpen={isHeldBillsOpen}
+          onClose={() => setIsHeldBillsOpen(false)}
+          heldBills={heldBills}
+          onResume={handleResumeBill}
+          onDiscard={handleDiscardHeldBill}
+          onClearAll={handleClearAllHeldBills}
         />
       )}
 

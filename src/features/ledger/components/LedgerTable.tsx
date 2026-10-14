@@ -56,7 +56,7 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({
             {paginatedMovements.map((m) => (
               <tr key={m.id}>
                 <td style={{ fontSize: "0.82rem", color: "#3b5370" }}>
-                  {formatTo12Hour(m.timestamp)}
+                  {formatTo12Hour(m.timestamp, m.reference_no)}
                 </td>
                 <td>
                   <span

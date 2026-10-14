@@ -1,5 +1,6 @@
 import { getDb } from "../../../services/database";
 import { Product, ProductInput } from "../types";
+import { getRealTime } from "../../../services/realTimeService";
 
 export async function fetchProducts(): Promise<Product[]> {
   const db = await getDb();
@@ -24,14 +25,8 @@ export async function fetchProducts(): Promise<Product[]> {
 
 export async function createProduct(product: ProductInput): Promise<Product> {
   const db = await getDb();
-  const now = new Date();
-  const formattedDate = `${now.getFullYear()}-${String(
-    now.getMonth() + 1
-  ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(
-    now.getHours()
-  ).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(
-    now.getSeconds()
-  ).padStart(2, "0")}`;
+  const now = getRealTime();
+  const formattedDate = now.toISOString();
 
   const res = await db.execute(
     `INSERT INTO products (barcode, name, batch_no, mrp, price, cost_price, stock, hsn_code, reorder_threshold, gst_rate, category, created_at)

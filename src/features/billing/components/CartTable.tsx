@@ -10,6 +10,10 @@ interface CartTableProps {
   onRemoveItem: (productId: number) => void;
   onClearCart: () => void;
   onOpenAddProduct?: () => void;
+  onOpenReturnModal?: () => void;
+  onHoldBill?: () => void;
+  onOpenHeldBills?: () => void;
+  heldBillsCount?: number;
 }
 
 export const CartTable: React.FC<CartTableProps> = ({
@@ -20,6 +24,10 @@ export const CartTable: React.FC<CartTableProps> = ({
   onRemoveItem,
   onClearCart,
   onOpenAddProduct,
+  onOpenReturnModal,
+  onHoldBill,
+  onOpenHeldBills,
+  heldBillsCount = 0,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -47,6 +55,27 @@ export const CartTable: React.FC<CartTableProps> = ({
       <div className="list-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h2>Current Order Items ({cart.length})</h2>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          {onOpenReturnModal && (
+            <button
+              type="button"
+              className="btn secondary-btn"
+              onClick={onOpenReturnModal}
+              style={{
+                padding: "5px 12px",
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "#f1f5f9",
+                color: "#1e293b",
+                border: "1px solid #cbd5e1",
+              }}
+              title="Open Sales Return & Exchange (F4)"
+            >
+              🔄 Return (F4)
+            </button>
+          )}
           {onOpenAddProduct && (
             <button
               type="button"
@@ -67,6 +96,67 @@ export const CartTable: React.FC<CartTableProps> = ({
               + New Product
             </button>
           )}
+          {onHoldBill && (
+            <button
+              type="button"
+              className="btn secondary-btn"
+              onClick={onHoldBill}
+              disabled={cart.length === 0}
+              style={{
+                padding: "5px 12px",
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                background: cart.length > 0 ? "linear-gradient(to bottom, #fff7ed 0%, #ffedd5 100%)" : "#f1f5f9",
+                color: cart.length > 0 ? "#c2410c" : "#94a3b8",
+                border: cart.length > 0 ? "1px solid #fdba74" : "1px solid #cbd5e1",
+                cursor: cart.length > 0 ? "pointer" : "not-allowed",
+              }}
+              title="Park / Hold current cart to bill another customer (F6)"
+            >
+              ⏸️ Hold Bill (F6)
+            </button>
+          )}
+
+          {onOpenHeldBills && (
+            <button
+              type="button"
+              className="btn secondary-btn"
+              onClick={onOpenHeldBills}
+              style={{
+                padding: "5px 12px",
+                fontSize: "0.82rem",
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                background: heldBillsCount > 0 ? "linear-gradient(to bottom, #eff6ff 0%, #dbeafe 100%)" : "#f1f5f9",
+                color: heldBillsCount > 0 ? "#1d4ed8" : "#475569",
+                border: heldBillsCount > 0 ? "1px solid #93c5fd" : "1px solid #cbd5e1",
+              }}
+              title="View and resume parked bills (F7)"
+            >
+              📋 Held Bills
+              {heldBillsCount > 0 && (
+                <span
+                  style={{
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    borderRadius: "10px",
+                    padding: "0 6px",
+                    fontSize: "0.74rem",
+                    fontWeight: 700,
+                    lineHeight: "18px",
+                  }}
+                >
+                  {heldBillsCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {cart.length > 0 && (
             <button className="btn secondary-btn" onClick={onClearCart}>
               Clear Cart

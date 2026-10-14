@@ -2,6 +2,9 @@ import { getDb } from "../../../services/database";
 import { notifyDbUpdated } from "../../../services/syncProcessor";
 import { Sale, SaleItem, CreateSaleInput, UpdateSaleInput } from "../types";
 import { recordCustomerSale, calculateLoyaltyPoints } from "../../customers/services/customerService";
+import { generateInvoiceInfo, getRealTime } from "../../../services/realTimeService";
+import { parseSaleDate } from "../../../utils/dateUtils";
+import { invoiceToEan13 } from "../../../utils/ean13";
 
 export async function createSale(input: CreateSaleInput): Promise<Sale> {
   const db = await getDb();
@@ -26,12 +29,8 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
     }
   }
 
-  // Unique Invoice Number: INV-YYYYMMDD-HHMMSS-RAND
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
-  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
-  const rand = Math.floor(100 + Math.random() * 900);
-  const invoiceNo = `INV-${dateStr}-${timeStr}-${rand}`;
+  // Calibrated real-world invoice number and timestamp (in Asia/Kolkata timezone)
+  const { invoiceNo, localCreatedAt } = generateInvoiceInfo();
 
   // Subtotal (Total MRP), Discount, Inclusive GST, and Grand Total
   let sellingTotal = 0;
@@ -62,17 +61,6 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
 
   const dbTotalAmount = totalMrp > 0 ? totalMrp : sellingTotal;
   const grandTotal = Math.max(0, dbTotalAmount - discountVal);
-
-  // Local time string for sale timestamp
-  const localCreatedAt = now.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
 
   let formattedPaymentMode = input.payment_mode || "Cash";
   const dueAmt = input.due_amount !== undefined ? input.due_amount : 0;
@@ -137,10 +125,11 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
     const itemTotal = item.price * item.quantity;
     const itemMrp = item.mrp !== undefined && item.mrp > 0 ? item.mrp : item.price;
     await db.execute(
-      `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, price, quantity, total_price, mrp)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, price, quantity, total_price, mrp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         saleId,
+        invoiceNo,
         item.product_id,
         item.product_name,
         item.barcode || "",
@@ -166,6 +155,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
 
     saleItems.push({
       sale_id: saleId,
+      invoice_no: invoiceNo,
       product_id: item.product_id,
       product_name: item.product_name,
       barcode: item.barcode || "",
@@ -220,14 +210,15 @@ export async function fetchSales(): Promise<Sale[]> {
 
 export async function fetchTodayBillsCount(): Promise<number> {
   const db = await getDb();
-  const sales = await db.select<{ created_at: string }[]>(
-    "SELECT created_at FROM sales"
+  const sales = await db.select<{ created_at: string; invoice_no: string }[]>(
+    "SELECT created_at, invoice_no FROM sales"
   );
-  const now = new Date();
+  const now = getRealTime();
   const todayDay = now.getDate();
   const todayMonth = now.getMonth();
   const todayYear = now.getFullYear();
   const todayStr = now.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -235,7 +226,7 @@ export async function fetchTodayBillsCount(): Promise<number> {
 
   let count = 0;
   for (const s of sales) {
-    const saleDate = s.created_at ? new Date(s.created_at) : null;
+    const saleDate = parseSaleDate(s.created_at, s.invoice_no);
     const isToday =
       saleDate &&
       !isNaN(saleDate.getTime()) &&
@@ -261,6 +252,66 @@ export async function fetchSaleDetails(saleId: number): Promise<Sale | null> {
   const items = await db.select<SaleItem[]>(
     "SELECT * FROM sale_items WHERE sale_id = $1",
     [saleId]
+  );
+  sale.items = items;
+  return sale;
+}
+
+export async function fetchSaleByInvoice(invoiceNo: string): Promise<Sale | null> {
+  const db = await getDb();
+  const trimmed = invoiceNo.trim();
+  if (!trimmed) return null;
+
+  // 1. Exact match by invoice_no
+  let sales = await db.select<Sale[]>(
+    "SELECT * FROM sales WHERE LOWER(invoice_no) = LOWER($1) LIMIT 1",
+    [trimmed]
+  );
+
+  // 2. EAN-13 barcode scan match (13 digits)
+  if (sales.length === 0 && /^\d{13}$/.test(trimmed)) {
+    // If derived from INV-YYYYMMDD-HHMMSS-RRR (YYMMDDHHMMSS + C)
+    const yy = trimmed.slice(0, 2);
+    const mm = trimmed.slice(2, 4);
+    const dd = trimmed.slice(4, 6);
+    const hh = trimmed.slice(6, 8);
+    const min = trimmed.slice(8, 10);
+    const ss = trimmed.slice(10, 12);
+    const invPrefix = `INV-20${yy}${mm}${dd}-${hh}${min}${ss}%`;
+
+    sales = await db.select<Sale[]>(
+      "SELECT * FROM sales WHERE invoice_no LIKE $1 LIMIT 1",
+      [invPrefix]
+    );
+
+    // Fallback: match against recent sales using invoiceToEan13
+    if (sales.length === 0) {
+      const recent = await db.select<Sale[]>(
+        "SELECT * FROM sales ORDER BY id DESC LIMIT 200"
+      );
+      const match = recent.find((s) => invoiceToEan13(s.invoice_no, s.id) === trimmed);
+      if (match) {
+        sales = [match];
+      }
+    }
+  }
+
+  // 3. Fallback: match by partial invoice or ID
+  if (sales.length === 0) {
+    sales = await db.select<Sale[]>(
+      "SELECT * FROM sales WHERE invoice_no LIKE '%' || $1 || '%' OR id = $2 LIMIT 1",
+      [trimmed, parseInt(trimmed, 10) || 0]
+    );
+  }
+
+  if (sales.length === 0) return null;
+
+  const sale = sales[0];
+  const items = await db.select<SaleItem[]>(
+    `SELECT * FROM sale_items 
+     WHERE (invoice_no IS NOT NULL AND invoice_no != '' AND invoice_no = $1) OR sale_id = $2
+     ORDER BY id ASC`,
+    [sale.invoice_no, sale.id]
   );
   sale.items = items;
   return sale;
@@ -422,7 +473,7 @@ export async function updateSale(
          grand_total = $6,
          payment_mode = $7,
          marketing_person_id = $8
-     WHERE id = $9`,
+     WHERE invoice_no = $9`,
     [
       input.customer_name || "Walk-in Customer",
       input.customer_phone || "",
@@ -432,21 +483,22 @@ export async function updateSale(
       grandTotal,
       formattedPaymentMode,
       newMktId || null,
-      saleId,
+      oldSale.invoice_no,
     ]
   );
 
   // 7. Update sale_items
-  await db.execute("DELETE FROM sale_items WHERE sale_id = $1", [saleId]);
+  await db.execute("DELETE FROM sale_items WHERE invoice_no = $1", [oldSale.invoice_no]);
   const newSaleItems: SaleItem[] = [];
   for (const item of input.items) {
     const itemTotal = item.price * item.quantity;
     const itemMrp = item.mrp !== undefined && item.mrp > 0 ? item.mrp : item.price;
     await db.execute(
-      `INSERT INTO sale_items (sale_id, product_id, product_name, barcode, price, quantity, total_price, mrp)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, price, quantity, total_price, mrp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         saleId,
+        oldSale.invoice_no,
         item.product_id,
         item.product_name,
         item.barcode || "",
@@ -458,6 +510,7 @@ export async function updateSale(
     );
     newSaleItems.push({
       sale_id: saleId,
+      invoice_no: oldSale.invoice_no,
       product_id: item.product_id,
       product_name: item.product_name,
       barcode: item.barcode || "",
@@ -636,9 +689,9 @@ export async function deleteSale(saleId: number): Promise<void> {
     }
   }
 
-  // 6. Delete sale items and sale records from database
-  await db.execute("DELETE FROM sale_items WHERE sale_id = $1", [saleId]);
-  await db.execute("DELETE FROM sales WHERE id = $1", [saleId]);
+  // 6. Delete sale items and sale records from database (identified globally by invoice_no)
+  await db.execute("DELETE FROM sale_items WHERE invoice_no = $1", [sale.invoice_no]);
+  await db.execute("DELETE FROM sales WHERE invoice_no = $1", [sale.invoice_no]);
 
   // 7. Recalculate customer loyalty points after sale deletion
   if (customerId && (phone || name)) {
@@ -661,5 +714,7 @@ export async function deleteSale(saleId: number): Promise<void> {
       console.error("Failed to recalculate loyalty points on sale delete:", ptsErr);
     }
   }
+
+  notifyDbUpdated("all");
 }
 

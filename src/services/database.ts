@@ -96,13 +96,34 @@ function prepareSyncQuery(
     /^INSERT\s+INTO\s+([a-zA-Z0-9_]+)\s*\(([^)]+)\)\s*VALUES\s*\(([\s\S]+)\)$/i
   );
 
-  if (insertMatch && lastInsertId && lastInsertId > 0) {
-    const tableName = insertMatch[1];
+  if (insertMatch) {
+    const tableName = insertMatch[1].toLowerCase();
     const cols = insertMatch[2];
-    const vals = insertMatch[3];
-    const colNames = cols.split(",").map((c) => c.trim().toLowerCase());
-    if (!colNames.includes("id")) {
-      return `INSERT INTO ${tableName} (id, ${cols}) VALUES (${lastInsertId}, ${vals});`;
+    let vals = insertMatch[3];
+
+    // For sale_items: DO NOT force SQLite autoincrement ID on Supabase.
+    // Resolve sale_id dynamically by invoice_no in Supabase so items always connect to the right sale!
+    if (tableName === "sale_items") {
+      const invMatch = `VALUES (${vals})`.match(
+        /VALUES\s*\(\s*(\d+)\s*,\s*('(?:INV-[^']+|[^']+)')/i
+      );
+      if (invMatch) {
+        const localSaleId = invMatch[1];
+        const invoiceNoVal = invMatch[2];
+        const escapedInv = invoiceNoVal.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+        vals = vals.replace(
+          new RegExp(`^\\s*${localSaleId}\\s*,\\s*${escapedInv}`),
+          `COALESCE((SELECT id FROM sales WHERE invoice_no = ${invoiceNoVal}), ${localSaleId}), ${invoiceNoVal}`
+        );
+      }
+      return `INSERT INTO sale_items (${cols}) VALUES (${vals});`;
+    }
+
+    if (lastInsertId && lastInsertId > 0) {
+      const colNames = cols.split(",").map((c) => c.trim().toLowerCase());
+      if (!colNames.includes("id")) {
+        return `INSERT INTO ${tableName} (id, ${cols}) VALUES (${lastInsertId}, ${vals});`;
+      }
     }
   }
 
@@ -271,6 +292,7 @@ async function initTables(db: Database) {
       quantity INTEGER NOT NULL,
       total_price REAL NOT NULL,
       mrp REAL DEFAULT 0,
+      invoice_no TEXT,
       FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE
     );
   `);
@@ -364,6 +386,7 @@ async function initTables(db: Database) {
     "ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0",
     "ALTER TABLE sales ADD COLUMN marketing_person_id INTEGER",
     "ALTER TABLE sale_items ADD COLUMN mrp REAL DEFAULT 0",
+    "ALTER TABLE sale_items ADD COLUMN invoice_no TEXT",
     "ALTER TABLE purchase_items ADD COLUMN batch_no TEXT",
     "ALTER TABLE purchase_items ADD COLUMN mrp REAL DEFAULT 0",
     "ALTER TABLE purchase_items ADD COLUMN gst_rate REAL DEFAULT 0",
@@ -405,6 +428,17 @@ async function initTables(db: Database) {
     } catch {
       // Column exists, ignore
     }
+  }
+
+  // Auto-backfill invoice_no for any legacy sale_items rows
+  try {
+    await db.execute(`
+      UPDATE sale_items 
+      SET invoice_no = (SELECT invoice_no FROM sales WHERE sales.id = sale_items.sale_id) 
+      WHERE invoice_no IS NULL OR invoice_no = ''
+    `);
+  } catch {
+    // Column or matching sales might not be available yet
   }
 
   // Drop extra tables created previously

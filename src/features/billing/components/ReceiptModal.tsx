@@ -8,6 +8,8 @@ import {
 } from "../../../services/escposService";
 import { loadReceiptStoreInfo } from "../../../services/receiptStoreInfo";
 import { Pagination } from "../../../components/common/Pagination";
+import { formatTo12Hour } from "../../../utils/dateUtils";
+import { generateEan13Svg } from "../../../utils/ean13";
 
 interface ReceiptModalProps {
   sale: Sale;
@@ -152,7 +154,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const totalQty = items.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" style={{ cursor: "default" }}>
       <div
         className="modal-content card receipt-modal"
         onClick={(e) => e.stopPropagation()}
@@ -161,9 +163,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         <div className="modal-header">
           <div>
             <h2>Invoice Summary</h2>
-            <p className="hint-text">
-              Invoice #{sale.invoice_no} • {sale.created_at || "Just now"}
-            </p>
+            <div className="hint-text" style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "2px" }}>
+              <span style={{ fontWeight: 600 }}>Invoice #{sale.invoice_no}</span>
+              <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
+                {formatTo12Hour(sale.created_at, sale.invoice_no)}
+              </span>
+            </div>
           </div>
           <button className="close-btn" onClick={onClose}>
             ✕
@@ -477,6 +482,43 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Scannable Invoice Barcode (EAN-13) */}
+          {sale.invoice_no && (
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "10px",
+                background: "#ffffff",
+                borderRadius: "6px",
+                border: "1px solid #e2e8f0",
+                textAlign: "center",
+              }}
+            >
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: generateEan13Svg(sale.invoice_no, {
+                    height: 52,
+                    moduleWidth: 2.0,
+                    align: "center",
+                    showText: true,
+                    fontSize: 13,
+                  }),
+                }}
+                style={{ display: "inline-block" }}
+              />
+              <div
+                style={{
+                  marginTop: "4px",
+                  fontSize: "0.78rem",
+                  color: "#64748b",
+                  fontFamily: "monospace",
+                }}
+              >
+                Invoice #{sale.invoice_no}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons: Close, Print Bill */}

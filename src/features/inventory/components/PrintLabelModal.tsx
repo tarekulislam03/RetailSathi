@@ -144,6 +144,7 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
   const mrpValue = previewItem
     ? (previewItem.mrp && previewItem.mrp > 0 ? previewItem.mrp : previewItem.price)
     : 0;
+  const rateValue = previewItem ? (previewItem.price || 0) : 0;
 
   const validation = settings ? validateLabelSettings(settings) : { valid: true };
 
@@ -258,75 +259,112 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
                   <div
                     style={{
                       display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-start",
+                      flexDirection: "row",
+                      alignItems: "stretch",
                       width: "100%",
+                      justifyContent: "space-between",
                     }}
                   >
+                    {/* Left: Store, Name, Barcode, RATE */}
                     <div
                       style={{
-                        fontSize: "0.88rem",
-                        fontWeight: 900,
-                        color: "#0f172a",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        width: "100%",
-                        letterSpacing: "0.4px",
-                        textAlign: "left",
-                        marginBottom: "10px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        flex: 1,
+                        minWidth: 0,
+                        paddingRight: "6px",
                       }}
                     >
-                      {storeName}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 800,
-                        color: "#0f172a",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        width: "100%",
-                        lineHeight: "1.2",
-                        textAlign: "left",
-                        marginBottom: "3px",
-                      }}
-                      title={previewItem?.name}
-                    >
-                      {previewItem?.name || "Product Name"}
-                    </div>
-
-                    {barcodeSvg ? (
                       <div
-                        dangerouslySetInnerHTML={{ __html: barcodeSvg }}
                         style={{
-                          display: "flex",
-                          justifyContent: "flex-start",
-                          alignItems: "center",
+                          fontSize: "0.88rem",
+                          fontWeight: 900,
+                          color: "#0f172a",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
                           width: "100%",
-                          margin: "1px 0 2px 0",
+                          letterSpacing: "0.4px",
+                          textAlign: "left",
+                          marginBottom: "10px",
                         }}
-                      />
-                    ) : (
-                      <div style={{ color: "#ef4444", fontSize: "0.75rem", padding: "4px 0" }}>
-                        ⚠️ No barcode
+                      >
+                        {storeName}
                       </div>
-                    )}
 
+                      <div
+                        style={{
+                          fontSize: "0.85rem",
+                          fontWeight: 800,
+                          color: "#0f172a",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          width: "100%",
+                          lineHeight: "1.2",
+                          textAlign: "left",
+                          marginBottom: "3px",
+                        }}
+                        title={previewItem?.name}
+                      >
+                        {previewItem?.name || "Product Name"}
+                      </div>
+
+                      {barcodeSvg ? (
+                        <div
+                          dangerouslySetInnerHTML={{ __html: barcodeSvg }}
+                          style={{
+                            display: "flex",
+                            justifyContent: "flex-start",
+                            alignItems: "center",
+                            width: "100%",
+                            margin: "1px 0 2px 0",
+                          }}
+                        />
+                      ) : (
+                        <div style={{ color: "#ef4444", fontSize: "0.75rem", padding: "4px 0" }}>
+                          ⚠️ No barcode
+                        </div>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: "0.88rem",
+                          fontWeight: 900,
+                          color: "#000000",
+                          width: "100%",
+                          letterSpacing: "0.3px",
+                          textAlign: "left",
+                          marginTop: "1px",
+                        }}
+                      >
+                        RATE: Rs.{rateValue.toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* Right: Rotated 90° MRP in smaller font without any border/underline */}
                     <div
                       style={{
-                        fontSize: "0.88rem",
-                        fontWeight: 900,
-                        color: "#000000",
-                        width: "100%",
-                        letterSpacing: "0.3px",
-                        textAlign: "left",
-                        marginTop: "1px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingLeft: "6px",
                       }}
                     >
-                      MRP Rs.{mrpValue.toFixed(2)}
+                      <span
+                        style={{
+                          writingMode: "vertical-rl",
+                          fontSize: "0.58rem",
+                          fontWeight: 600,
+                          color: "#475569",
+                          letterSpacing: "0.3px",
+                          whiteSpace: "nowrap",
+                          textDecoration: "none",
+                        }}
+                      >
+                        MRP Rs.{mrpValue.toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 </div>

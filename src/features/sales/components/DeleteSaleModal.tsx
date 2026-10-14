@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Sale } from "../../billing/types";
 import { fetchSaleDetails, deleteSale } from "../../billing/services/billingService";
+import { formatTo12Hour } from "../../../utils/dateUtils";
 
 interface DeleteSaleModalProps {
   isOpen: boolean;
@@ -64,7 +65,7 @@ export const DeleteSaleModal: React.FC<DeleteSaleModalProps> = ({
           <div>
             <h2 style={{ color: "#8c1010" }}>Confirm Delete Sale</h2>
             <div className="hint-text">
-              Invoice #{currentSale.invoice_no} ({currentSale.created_at || "N/A"})
+              Invoice #{currentSale.invoice_no} ({formatTo12Hour(currentSale.created_at, currentSale.invoice_no)})
             </div>
           </div>
           <button className="close-btn" onClick={onClose} type="button">

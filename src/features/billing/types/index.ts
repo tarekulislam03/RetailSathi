@@ -27,6 +27,7 @@ export interface Sale {
 export interface SaleItem {
   id?: number;
   sale_id?: number;
+  invoice_no?: string;
   product_id: number;
   product_name: string;
   barcode: string;
@@ -82,4 +83,20 @@ export interface UpdateSaleInput {
     gst_rate?: number;
   }[];
 }
+
+export interface HeldBill {
+  id: string;
+  heldAt: string;
+  customer_name?: string;
+  customer_phone?: string;
+  marketing_person_id?: number | null;
+  payment_mode?: string;
+  cart: CartItem[];
+  total_mrp: number;
+  grand_total: number;
+  total_items: number;
+  total_qty: number;
+  note?: string;
+}
+
 

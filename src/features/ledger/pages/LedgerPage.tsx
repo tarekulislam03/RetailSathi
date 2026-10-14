@@ -4,6 +4,7 @@ import { StockMovement } from "../types";
 import { fetchStockMovements } from "../services/ledgerService";
 import { LedgerTable } from "../components/LedgerTable";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
+import { parseSaleDate } from "../../../utils/dateUtils";
 
 export const LedgerPage: React.FC = () => {
   const navigate = useNavigate();
@@ -66,16 +67,16 @@ export const LedgerPage: React.FC = () => {
 
     // Date Range Filter
     if (startDate) {
-      const startMs = new Date(startDate).getTime();
-      const movementMs =
-        new Date(m.timestamp).getTime() || Date.parse(m.timestamp);
+      const startMs = new Date(startDate + "T00:00:00").getTime();
+      const parsedDate = parseSaleDate(m.timestamp, m.reference_no);
+      const movementMs = parsedDate ? parsedDate.getTime() : 0;
       if (movementMs && movementMs < startMs) return false;
     }
 
     if (endDate) {
-      const endMs = new Date(endDate + "T23:59:59").getTime();
-      const movementMs =
-        new Date(m.timestamp).getTime() || Date.parse(m.timestamp);
+      const endMs = new Date(endDate + "T23:59:59.999").getTime();
+      const parsedDate = parseSaleDate(m.timestamp, m.reference_no);
+      const movementMs = parsedDate ? parsedDate.getTime() : 0;
       if (movementMs && movementMs > endMs) return false;
     }
 

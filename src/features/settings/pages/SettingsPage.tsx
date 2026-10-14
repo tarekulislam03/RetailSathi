@@ -19,6 +19,7 @@ import {
 } from "../../../services/tsplService";
 import { generateQrSvg, generateUpiUri } from "../../../utils/qrCodeGenerator";
 import { generateCode128Svg } from "../../../utils/code128";
+import { generateEan13Svg } from "../../../utils/ean13";
 
 export const SettingsPage: React.FC = () => {
   const [store, setStore] = useState<Store | null>(null);
@@ -485,9 +486,9 @@ export const SettingsPage: React.FC = () => {
     ? generateQrSvg(sampleUpiUri, { size: 110, margin: 1 })
     : "";
 
-  const sampleBarcodeSvg = generateCode128Svg("INV-2026-0001", {
-    height: 36,
-    moduleWidth: 1.3,
+  const sampleBarcodeSvg = generateEan13Svg("INV-2026-0001", {
+    height: 42,
+    moduleWidth: 1.6,
     showText: true,
   });
 

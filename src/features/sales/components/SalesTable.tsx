@@ -72,7 +72,7 @@ export const SalesTable: React.FC<SalesTableProps> = ({
                 <td>
                   <span className="category-badge">{sale.payment_mode}</span>
                 </td>
-                <td>{formatTo12Hour(sale.created_at)}</td>
+                <td>{formatTo12Hour(sale.created_at, sale.invoice_no)}</td>
                 <td>
                   <div className="action-buttons" style={{ justifyContent: "center" }}>
                     <button

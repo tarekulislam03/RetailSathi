@@ -5,6 +5,7 @@ import { fetchProducts } from "../../inventory/services/inventoryService";
 import { Product } from "../../inventory/types";
 import { fetchMarketingPersons } from "../../marketing/services/marketingService";
 import { MarketingPerson } from "../../marketing/types";
+import { formatTo12Hour } from "../../../utils/dateUtils";
 
 interface EditSaleModalProps {
   isOpen: boolean;
@@ -261,7 +262,7 @@ export const EditSaleModal: React.FC<EditSaleModalProps> = ({
           <div>
             <h2>Edit Invoice #{sale.invoice_no}</h2>
             <div className="hint-text">
-              Date: {sale.created_at || "N/A"} | Modify customer, items, prices, and payment details
+              Date: {formatTo12Hour(sale.created_at, sale.invoice_no)} | Modify customer, items, prices, and payment details
             </div>
           </div>
           <button className="close-btn" onClick={onClose} type="button">

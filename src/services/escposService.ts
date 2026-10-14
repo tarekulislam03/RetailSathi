@@ -3,6 +3,8 @@ import { Sale } from "../features/billing/types";
 import { getActiveOrFirstStore } from "../features/stores/services/storeService";
 import { generateUpiUri, generateQrMatrix } from "../utils/qrCodeGenerator";
 import { encodeCode128 } from "../utils/code128";
+import { encodeEan13 } from "../utils/ean13";
+import { formatTo12Hour } from "../utils/dateUtils";
 
 export interface PrinterDevice {
   name: string;
@@ -298,8 +300,9 @@ export function createReceiptCanvas(
   drawDashedLine(y);
   y += 18;
 
-  const dateStr = sale.created_at || new Date().toLocaleString();
-  y = drawTwoColumnText(`Bill No: #${sale.invoice_no}`, dateStr, "20px sans-serif", y); // 1.8rem
+  const dateStr = formatTo12Hour(sale.created_at, sale.invoice_no);
+  y = drawTwoColumnText("Bill No:", `#${sale.invoice_no}`, "bold 20px sans-serif", y);
+  y = drawTwoColumnText("Date & Time:", dateStr, "20px sans-serif", y);
 
   if (showCustomer && (sale.customer_name || sale.customer_phone)) {
     if (sale.customer_name && sale.customer_name !== "Walk-in Customer") {
@@ -460,26 +463,49 @@ export function createReceiptCanvas(
     y = drawCenteredText("* Barcode and Bill is mandatory for exchange *", "bold 20px sans-serif", y);
   }
 
-  // 7. INVOICE CODE 128 BARCODE
+  // 7. INVOICE EAN-13 BARCODE (super scannable with 95 wide modules)
   if (showBarcode && sale.invoice_no) {
     y += 14;
-    const barcodeData = encodeCode128(sale.invoice_no);
-    const moduleWidth = canvasWidth === 384 ? 2 : 2.5;
-    const barcodeH = 65;
-    const totalBcW = barcodeData.modules.length * moduleWidth;
-    const startX = (canvasWidth - totalBcW) / 2;
+    const eanData = encodeEan13(sale.invoice_no);
+    const moduleWidth = canvasWidth === 384 ? 2 : 3;
+    const barcodeH = 70;
+    const totalBcW = eanData.modules.length * moduleWidth;
+    const startX = Math.floor((canvasWidth - totalBcW) / 2);
 
+    // Clean white quiet zone
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, y - 6, canvasWidth, barcodeH + 34);
+
+    // Render solid contiguous black bars to avoid anti-aliasing seams
     ctx.fillStyle = "#000000";
-    for (let i = 0; i < barcodeData.modules.length; i++) {
-      if (barcodeData.modules[i]) {
-        ctx.fillRect(startX + i * moduleWidth, y, moduleWidth, barcodeH);
+    let barStart = -1;
+    for (let i = 0; i <= eanData.modules.length; i++) {
+      const isBar = i < eanData.modules.length ? eanData.modules[i] : false;
+      if (isBar && barStart === -1) {
+        barStart = i;
+      } else if (!isBar && barStart !== -1) {
+        const barX = startX + barStart * moduleWidth;
+        const barW = (i - barStart) * moduleWidth;
+        ctx.fillRect(barX, y, barW, barcodeH);
+        barStart = -1;
       }
     }
-    y += barcodeH + 20;
-    ctx.font = "20px monospace";
+
+    y += barcodeH + 8;
+    // Human readable EAN-13 text
+    const d = eanData.digits;
+    const formattedEan = `${d[0]} ${d.slice(1, 7)} ${d.slice(7)}`;
+    ctx.font = "bold 22px monospace";
     ctx.textAlign = "center";
-    ctx.fillText(sale.invoice_no, canvasWidth / 2, y);
-    y += 14;
+    ctx.fillStyle = "#000000";
+    ctx.fillText(formattedEan, canvasWidth / 2, y);
+    y += 22;
+
+    // Readable invoice number reference
+    ctx.font = "16px monospace";
+    ctx.fillStyle = "#444444";
+    ctx.fillText(`(Invoice: ${sale.invoice_no})`, canvasWidth / 2, y);
+    y += 24;
   }
 
   // 8. DYNAMIC UPI QR CODE
@@ -588,8 +614,10 @@ export function createBarcodeLabelCanvas(
     { left: col2Left, right: col2Right, width: colWidth, center: col2Center },
   ];
 
-  const mrpValue = item.mrp && item.mrp > 0 ? item.mrp : item.price;
-  const mrpText = `MRP: Rs. ${mrpValue.toFixed(2)}`;
+  const rateValue = item.price || 0;
+  const mrpValue = item.mrp && item.mrp > 0 ? item.mrp : rateValue;
+  const rateText = `RATE: Rs. ${rateValue.toFixed(2)}`;
+  const mrpText = `MRP Rs. ${mrpValue.toFixed(2)}`;
 
   // Barcode encoding
   let barcodeData: { modules: boolean[] } | null = null;
@@ -605,7 +633,8 @@ export function createBarcodeLabelCanvas(
   const storeFont = is58 ? "bold 16px sans-serif" : "bold 20px sans-serif";
   const nameFont = is58 ? "bold 17px sans-serif" : "bold 22px sans-serif";
   const bcFont = is58 ? "bold 15px monospace" : "bold 18px monospace";
-  const mrpFont = is58 ? "bold 20px sans-serif" : "bold 26px sans-serif";
+  const rateFont = is58 ? "bold 18px sans-serif" : "bold 24px sans-serif";
+  const smallMrpFont = is58 ? "bold 11px sans-serif" : "bold 13px sans-serif";
   const barcodeH = is58 ? 68 : 88;
 
   let maxY = 0;
@@ -665,20 +694,30 @@ export function createBarcodeLabelCanvas(
       y += is58 ? 14 : 18;
     }
 
-    // Divider
+    // Divider (stops before rotated MRP column so it does not underline it)
     ctx.beginPath();
     ctx.setLineDash([3, 3]);
     ctx.moveTo(col.left, y);
-    ctx.lineTo(col.right, y);
+    ctx.lineTo(col.right - 18, y);
     ctx.stroke();
     ctx.setLineDash([]);
     y += is58 ? 16 : 18;
 
-    // 4. MRP at centre (Selling price removed)
-    ctx.font = mrpFont;
+    // 4. Selling RATE below barcode
+    ctx.font = rateFont;
     ctx.textAlign = "center";
-    ctx.fillText(mrpText, col.center, y);
+    ctx.fillText(rateText, col.center - 8, y);
     y += is58 ? 18 : 22;
+
+    // 5. MRP rotated 90 degrees at right side of the column in small font
+    ctx.save();
+    ctx.font = smallMrpFont;
+    ctx.fillStyle = "#333333";
+    ctx.translate(col.right - 2, Math.round(y - barcodeH / 2));
+    ctx.rotate((90 * Math.PI) / 180);
+    ctx.textAlign = "center";
+    ctx.fillText(mrpText, 0, 0);
+    ctx.restore();
 
     if (y > maxY) maxY = y;
   });

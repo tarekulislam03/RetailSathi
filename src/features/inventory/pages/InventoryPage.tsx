@@ -25,6 +25,7 @@ export const InventoryPage: React.FC = () => {
   const [isBulkPrintOpen, setIsBulkPrintOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [barcodeFilter, setBarcodeFilter] = useState<"ALL" | "WITH_BARCODE" | "WITHOUT_BARCODE">("ALL");
 
   async function loadData(silent = false) {
     try {
@@ -88,13 +89,22 @@ export const InventoryPage: React.FC = () => {
 
   const lowStockCount = products.filter((p) => p.stock <= p.reorder_threshold).length;
 
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.barcode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.batch_no.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter((p) => {
+    const hasBarcode = Boolean(p.barcode && p.barcode.trim());
+    if (barcodeFilter === "WITH_BARCODE" && !hasBarcode) return false;
+    if (barcodeFilter === "WITHOUT_BARCODE" && hasBarcode) return false;
+
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.barcode.toLowerCase().includes(q) ||
+        p.batch_no.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
 
   return (
     <>
@@ -167,6 +177,17 @@ export const InventoryPage: React.FC = () => {
               🏷️ Print Labels
             </button>
 
+            <select
+              className="search-input"
+              style={{ width: "150px", height: "34px", fontSize: "0.82rem", fontWeight: 600 }}
+              value={barcodeFilter}
+              onChange={(e) => setBarcodeFilter(e.target.value as any)}
+            >
+              <option value="ALL">All Products</option>
+              <option value="WITH_BARCODE">With Barcode</option>
+              <option value="WITHOUT_BARCODE">Without Barcode</option>
+            </select>
+
             <input
               type="text"
               className="search-input"
@@ -203,7 +224,7 @@ export const InventoryPage: React.FC = () => {
           <ProductTable
             products={filteredProducts}
             allProducts={products}
-            searchTerm={searchTerm}
+            searchTerm={`${searchTerm}|${barcodeFilter}`}
             onEdit={handleOpenEdit}
             onDelete={handleDeleteProduct}
           />

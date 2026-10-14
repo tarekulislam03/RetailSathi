@@ -440,60 +440,107 @@ async function pullPurchases(): Promise<void> {
 
 /**
  * Pull sales and sale_items from Supabase Cloud into local SQLite.
+ * Uses invoice_no as the universal primary key to prevent ID clashes across devices.
  */
 async function pullSales(): Promise<void> {
+  const db = await getDb();
+
+  // 1. Fetch sales from Supabase
   const { data: salesData, error: sError } = await supabase.from("sales").select("*");
-  if (!sError && salesData && salesData.length > 0) {
-    for (const s of salesData) {
-      await rawExecute(
-        `INSERT INTO sales (id, invoice_no, customer_name, customer_phone, total_amount, discount, tax_amount, grand_total, payment_mode, marketing_person_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT(id) DO UPDATE SET
-           invoice_no = excluded.invoice_no,
-           customer_name = excluded.customer_name,
-           customer_phone = excluded.customer_phone,
-           total_amount = excluded.total_amount,
-           discount = excluded.discount,
-           tax_amount = excluded.tax_amount,
-           grand_total = excluded.grand_total,
-           payment_mode = excluded.payment_mode,
-           marketing_person_id = excluded.marketing_person_id,
-           created_at = excluded.created_at`,
-        [
-          s.id,
-          s.invoice_no,
-          s.customer_name || null,
-          s.customer_phone || null,
-          Number(s.total_amount) || 0,
-          Number(s.discount) || 0,
-          Number(s.tax_amount) || 0,
-          Number(s.grand_total) || 0,
-          s.payment_mode,
-          s.marketing_person_id || null,
-          s.created_at || new Date().toISOString(),
-        ]
-      );
-    }
+  if (sError || !salesData) {
+    if (sError) console.warn("[SyncProcessor] Failed to pull sales:", sError);
+    return;
   }
 
+  // Map to resolve Supabase sale.id -> invoice_no
+  const cloudSaleIdToInvoice = new Map<number, string>();
+
+  // Upsert sales by invoice_no into local SQLite (never force cloud ID onto local autoincrement ID)
+  for (const s of salesData) {
+    if (!s.invoice_no) continue;
+    cloudSaleIdToInvoice.set(s.id, s.invoice_no);
+
+    await rawExecute(
+      `INSERT INTO sales (invoice_no, customer_name, customer_phone, total_amount, discount, tax_amount, grand_total, payment_mode, marketing_person_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT(invoice_no) DO UPDATE SET
+         customer_name = excluded.customer_name,
+         customer_phone = excluded.customer_phone,
+         total_amount = excluded.total_amount,
+         discount = excluded.discount,
+         tax_amount = excluded.tax_amount,
+         grand_total = excluded.grand_total,
+         payment_mode = excluded.payment_mode,
+         marketing_person_id = excluded.marketing_person_id,
+         created_at = excluded.created_at`,
+      [
+        s.invoice_no,
+        s.customer_name || null,
+        s.customer_phone || null,
+        Number(s.total_amount) || 0,
+        Number(s.discount) || 0,
+        Number(s.tax_amount) || 0,
+        Number(s.grand_total) || 0,
+        s.payment_mode,
+        s.marketing_person_id || null,
+        s.created_at || new Date().toISOString(),
+      ]
+    );
+  }
+
+  // 2. Fetch sale_items from Supabase
   const { data: saleItemsData, error: siError } = await supabase.from("sale_items").select("*");
-  if (!siError && saleItemsData && saleItemsData.length > 0) {
-    for (const it of saleItemsData) {
+  if (siError || !saleItemsData) {
+    if (siError) console.warn("[SyncProcessor] Failed to pull sale_items:", siError);
+    return;
+  }
+
+  // Map all local sales: invoice_no -> local sale_id
+  const localSales = await db.select<{ id: number; invoice_no: string }[]>(
+    "SELECT id, invoice_no FROM sales"
+  );
+  const localSaleMap = new Map<string, number>();
+  for (const ls of localSales) {
+    if (ls.invoice_no) localSaleMap.set(ls.invoice_no, ls.id);
+  }
+
+  // Group cloud sale items by invoice_no
+  const cloudItemsByInvoice = new Map<string, typeof saleItemsData>();
+  for (const it of saleItemsData) {
+    const inv = it.invoice_no || cloudSaleIdToInvoice.get(it.sale_id);
+    if (!inv) continue;
+    if (!cloudItemsByInvoice.has(inv)) {
+      cloudItemsByInvoice.set(inv, []);
+    }
+    cloudItemsByInvoice.get(inv)!.push(it);
+  }
+
+  // Reconcile items per invoice
+  for (const [invoiceNo, cloudItems] of cloudItemsByInvoice.entries()) {
+    const localSaleId = localSaleMap.get(invoiceNo);
+    if (!localSaleId) continue;
+
+    // Check existing local items for this invoice
+    const localItems = await db.select<{ id: number; product_id: number; quantity: number }[]>(
+      "SELECT id, product_id, quantity FROM sale_items WHERE invoice_no = $1",
+      [invoiceNo]
+    );
+
+    // If local items already exist and count matches cloud, they are already synced
+    if (localItems.length === cloudItems.length && localItems.length > 0) {
+      continue;
+    }
+
+    // Otherwise, replace local items for this invoice to keep data consistent without duplicates
+    await rawExecute("DELETE FROM sale_items WHERE invoice_no = $1", [invoiceNo]);
+
+    for (const it of cloudItems) {
       await rawExecute(
-        `INSERT INTO sale_items (id, sale_id, product_id, product_name, barcode, price, quantity, total_price, mrp)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT(id) DO UPDATE SET
-           sale_id = excluded.sale_id,
-           product_id = excluded.product_id,
-           product_name = excluded.product_name,
-           barcode = excluded.barcode,
-           price = excluded.price,
-           quantity = excluded.quantity,
-           total_price = excluded.total_price,
-           mrp = excluded.mrp`,
+        `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, price, quantity, total_price, mrp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
-          it.id,
-          it.sale_id,
+          localSaleId,
+          invoiceNo,
           it.product_id,
           it.product_name,
           it.barcode || null,
@@ -503,6 +550,25 @@ async function pullSales(): Promise<void> {
           Number(it.mrp) || Number(it.price) || 0,
         ]
       );
+    }
+  }
+
+  // 3. Handle deleted sales from cloud
+  const cloudInvoiceSet = new Set(salesData.map((s) => s.invoice_no));
+  for (const ls of localSales) {
+    if (!ls.invoice_no) continue;
+    if (!cloudInvoiceSet.has(ls.invoice_no)) {
+      // Check if there are any pending sync jobs for this invoice (e.g. freshly created offline sale)
+      const pending = await db.select<{ count: number }[]>(
+        "SELECT count(*) as count FROM sync_jobs WHERE query LIKE '%' || $1 || '%'",
+        [ls.invoice_no]
+      );
+      if (pending && pending[0] && pending[0].count > 0) {
+        continue;
+      }
+      // Sale deleted on cloud: remove local items and sale record
+      await rawExecute("DELETE FROM sale_items WHERE invoice_no = $1", [ls.invoice_no]);
+      await rawExecute("DELETE FROM sales WHERE invoice_no = $1", [ls.invoice_no]);
     }
   }
 }

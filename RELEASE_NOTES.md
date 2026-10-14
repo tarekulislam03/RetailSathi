@@ -1,10 +1,11 @@
-# Retail Sathi v0.2.1 - Receipt MRP Column, Dynamic UPI QR Fix & Standardized 50-Item Pagination
+# Retail Sathi v0.2.2 - Hold & Resume Bills, Scannable EAN-13 Barcodes & Checkout Click Protection
 
 ### 🚀 Key Features & Enhancements
-- **Receipt Items MRP Column**: Added a dedicated `MRP` column in the items table (`Item Name | Qty | MRP | Rate | Amount`) across both the on-screen customer receipt preview and thermal ESC/POS print rendering (optimized for both 80mm and 58mm receipt rolls).
-- **Thermal Receipt Typography Optimization**: Refined header proportions by moderating the store name font size and increasing the store tagline font size for enhanced clarity and aesthetic balance.
-- **Dynamic UPI QR Code Reliability**: Completely resolved dynamic UPI QR rendering by integrating the robust ISO/IEC 18004 compliant `qrcode` engine, strictly formatting NPCI UPI payment strings (preserving unencoded VPA `@` handles), adding quiet-zone margins, and ensuring reliable image cache invalidation.
-- **Standardized 50-Item Pagination**: Standardized the default table pagination across the entire app to 50 items per page with selectable increments of `50, 100, 200, 500` (applied across Inventory, Sales History, Purchases, Customers, Suppliers, Stock Ledger, Marketing, and related modals).
+- **Hold & Resume Bill (Cart Parking)**: Cashiers can park in-progress bills with `F6` or the "Hold Bill" button to quickly serve other customers. Parked carts persist across page changes, reloads, and sessions. Access the parked bills manager anytime with `F7` or the "Held Bills" badge button with one-click Resume, item inspection, and Discard actions.
+- **Scannable EAN-13 Invoice Barcodes**: Upgraded receipt invoice barcodes to ISO/IEC 15420 compliant EAN-13 on 80mm & 58mm thermal rolls and on-screen invoice summaries. Eliminates thermal ink bleed and ensures instant 100% first-pass reads on standard retail laser and image scanners.
+- **Strict Double-Click & Rapid-Scan Protection**: Hardened the Complete Sale button with synchronous locks, click-suppression, and disabled pointer-events to strictly accept a single click and prevent duplicate sales. Barcode scanner rapid newline bounces are also throttled.
+- **Print Bill & Invoice Summary Modal Backdrop Lock**: Disabled background clicks on the Print Bill / Invoice Summary modal to prevent accidental dismissals. The modal can now only be closed via the explicit `✕` cross button or `Close` button.
+- **Windows 7 Aero Return Modal**: Aligned the Sales Return modal (`F4`) with the signature Windows 7 Aero glass UI styling, including smooth translucency, refined borders, and consistent typography.
 
 ---
 *Retail Sathi Automatic Online Update System*

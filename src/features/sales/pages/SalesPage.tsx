@@ -13,6 +13,8 @@ import { ManageSalesProfitModal } from "../components/ManageSalesProfitModal";
 import { EditSaleModal } from "../components/EditSaleModal";
 import { DeleteSaleModal } from "../components/DeleteSaleModal";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
+import { parseSaleDate } from "../../../utils/dateUtils";
+import { getRealTime } from "../../../services/realTimeService";
 
 export const SalesPage: React.FC = () => {
   const [sales, setSales] = useState<Sale[]>([]);
@@ -104,13 +106,13 @@ export const SalesPage: React.FC = () => {
   }
 
   function handlePresetToday() {
-    const today = toYMD(new Date());
+    const today = toYMD(getRealTime());
     setStartDate(today);
     setEndDate(today);
   }
 
   function handlePresetYesterday() {
-    const yest = new Date();
+    const yest = getRealTime();
     yest.setDate(yest.getDate() - 1);
     const yestStr = toYMD(yest);
     setStartDate(yestStr);
@@ -118,7 +120,7 @@ export const SalesPage: React.FC = () => {
   }
 
   function handlePresetThisMonth() {
-    const now = new Date();
+    const now = getRealTime();
     const firstDay = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
     setStartDate(firstDay);
     setEndDate(toYMD(now));
@@ -145,16 +147,17 @@ export const SalesPage: React.FC = () => {
     }
 
     // Date Range Filter
-    const dateStr = s.created_at || "";
     if (startDate) {
       const startMs = new Date(startDate + "T00:00:00").getTime();
-      const saleMs = new Date(dateStr).getTime() || Date.parse(dateStr);
+      const saleDate = parseSaleDate(s.created_at, s.invoice_no);
+      const saleMs = saleDate ? saleDate.getTime() : 0;
       if (saleMs && saleMs < startMs) return false;
     }
 
     if (endDate) {
       const endMs = new Date(endDate + "T23:59:59.999").getTime();
-      const saleMs = new Date(dateStr).getTime() || Date.parse(dateStr);
+      const saleDate = parseSaleDate(s.created_at, s.invoice_no);
+      const saleMs = saleDate ? saleDate.getTime() : 0;
       if (saleMs && saleMs > endMs) return false;
     }
 

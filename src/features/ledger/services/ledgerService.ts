@@ -1,5 +1,7 @@
 import { getDb } from "../../../services/database";
 import { StockMovement, LedgerStatsData } from "../types";
+import { parseSaleDate } from "../../../utils/dateUtils";
+import { getRealTime } from "../../../services/realTimeService";
 
 export async function fetchStockMovements(): Promise<StockMovement[]> {
   const db = await getDb();
@@ -18,7 +20,7 @@ export async function fetchStockMovements(): Promise<StockMovement[]> {
       s.payment_mode AS category,
       s.created_at AS timestamp
     FROM sale_items si
-    JOIN sales s ON si.sale_id = s.id
+    JOIN sales s ON (si.invoice_no IS NOT NULL AND si.invoice_no != '' AND si.invoice_no = s.invoice_no) OR (si.sale_id = s.id)
     LEFT JOIN products pr ON si.product_id = pr.id
     ORDER BY s.id DESC
   `);
@@ -130,16 +132,8 @@ export async function fetchStockMovements(): Promise<StockMovement[]> {
     const currentStock = Number(pr.stock) || 0;
     const inventoryInitialStock = currentStock + sold - purchased;
 
-    const now = new Date();
-    const formattedNow = now.toLocaleString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
+    const now = getRealTime();
+    const formattedNow = now.toISOString();
 
     if (inventoryInitialStock > 0) {
       movements.push({
@@ -172,10 +166,12 @@ export async function fetchStockMovements(): Promise<StockMovement[]> {
     }
   }
 
-  // Sort all movements by timestamp in descending order
+  // Sort all movements by timestamp in descending order using accurate date parsing
   return movements.sort((a, b) => {
-    const timeA = new Date(a.timestamp).getTime() || Date.parse(a.timestamp) || 0;
-    const timeB = new Date(b.timestamp).getTime() || Date.parse(b.timestamp) || 0;
+    const parsedA = parseSaleDate(a.timestamp, a.reference_no);
+    const parsedB = parseSaleDate(b.timestamp, b.reference_no);
+    const timeA = parsedA ? parsedA.getTime() : (new Date(a.timestamp).getTime() || 0);
+    const timeB = parsedB ? parsedB.getTime() : (new Date(b.timestamp).getTime() || 0);
     return timeB - timeA;
   });
 }

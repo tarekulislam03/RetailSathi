@@ -42,7 +42,9 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
         target.closest("a") !== null ||
         target.closest("button") !== null ||
         target.closest(".sidebar") !== null ||
-        target.closest(".modal-overlay") !== null;
+        target.closest(".modal-overlay") !== null ||
+        target.closest(".modal-backdrop") !== null ||
+        target.closest(".modal-content") !== null;
 
       // If user clicked inside an interactive element, link, sidebar, or modal, do NOT steal focus
       if (isInteractive) {
@@ -90,16 +92,39 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
         .slice(0, 8)
     : [];
 
+  const lastScanTimeRef = useRef(0);
+  const lastScanTermRef = useRef("");
+
   function selectProduct(product: Product) {
+    const now = Date.now();
+    if (now - lastScanTimeRef.current < 250 && lastScanTermRef.current === String(product.id)) {
+      return;
+    }
+    lastScanTimeRef.current = now;
+    lastScanTermRef.current = String(product.id);
+
     onAddToCart(product);
     setQuickSearch("");
+    if (searchInputRef.current) {
+      searchInputRef.current.value = "";
+    }
     setShowDropdown(false);
     focusSearch();
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" && quickSearch.trim()) {
+      e.preventDefault();
       const term = quickSearch.trim().toLowerCase();
+      const now = Date.now();
+
+      // Ignore rapid duplicate scan / Enter keybounce (e.g. within 250ms for same term)
+      if (term === lastScanTermRef.current && now - lastScanTimeRef.current < 250) {
+        return;
+      }
+      lastScanTimeRef.current = now;
+      lastScanTermRef.current = term;
+
       const matched =
         products.find(
           (p) => p.barcode.toLowerCase() === term || p.name.toLowerCase() === term || (p.batch_no && p.batch_no.toLowerCase() === term)
@@ -114,6 +139,9 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
       if (matched) {
         onAddToCart(matched);
         setQuickSearch("");
+        if (searchInputRef.current) {
+          searchInputRef.current.value = "";
+        }
         setShowDropdown(false);
       } else {
         onError(`No product found for barcode / batch / name: "${quickSearch}"`);
