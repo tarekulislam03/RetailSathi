@@ -355,8 +355,8 @@ export const PrintLabelModal: React.FC<PrintLabelModalProps> = ({
                       <span
                         style={{
                           writingMode: "vertical-rl",
-                          fontSize: "0.58rem",
-                          fontWeight: 600,
+                          fontSize: "0.72rem",
+                          fontWeight: 700,
                           color: "#475569",
                           letterSpacing: "0.3px",
                           whiteSpace: "nowrap",

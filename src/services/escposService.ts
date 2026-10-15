@@ -634,7 +634,7 @@ export function createBarcodeLabelCanvas(
   const nameFont = is58 ? "bold 17px sans-serif" : "bold 22px sans-serif";
   const bcFont = is58 ? "bold 15px monospace" : "bold 18px monospace";
   const rateFont = is58 ? "bold 18px sans-serif" : "bold 24px sans-serif";
-  const smallMrpFont = is58 ? "bold 11px sans-serif" : "bold 13px sans-serif";
+  const smallMrpFont = is58 ? "bold 13px sans-serif" : "bold 15px sans-serif";
   const barcodeH = is58 ? 68 : 88;
 
   let maxY = 0;
