@@ -504,7 +504,7 @@ async function pullSales(): Promise<void> {
     if (ls.invoice_no) localSaleMap.set(ls.invoice_no, ls.id);
   }
 
-  // Group cloud sale items by invoice_no
+  // Group cloud sale items by invoice_no, deduplicating any duplicate sync entries
   const cloudItemsByInvoice = new Map<string, typeof saleItemsData>();
   for (const it of saleItemsData) {
     const inv = it.invoice_no || cloudSaleIdToInvoice.get(it.sale_id);
@@ -512,7 +512,16 @@ async function pullSales(): Promise<void> {
     if (!cloudItemsByInvoice.has(inv)) {
       cloudItemsByInvoice.set(inv, []);
     }
-    cloudItemsByInvoice.get(inv)!.push(it);
+    const list = cloudItemsByInvoice.get(inv)!;
+    const isDup = list.some(
+      (existing) =>
+        existing.product_id === it.product_id &&
+        Number(existing.quantity) === Number(it.quantity) &&
+        Number(existing.price) === Number(it.price)
+    );
+    if (!isDup) {
+      list.push(it);
+    }
   }
 
   // Reconcile items per invoice

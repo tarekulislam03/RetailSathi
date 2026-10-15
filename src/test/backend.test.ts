@@ -27,7 +27,7 @@ import {
   updateSupplier,
   deleteSupplier,
 } from "../features/purchases/services/supplierService";
-import { fetchSalesWithItems } from "../features/sales/services/salesService";
+import { fetchSalesWithItems, calculateSaleProfit, getSaleDateKey } from "../features/sales/services/salesService";
 import {
   fetchCustomers,
   createCustomer,
@@ -683,6 +683,10 @@ describe("Retail Sathi Backend Logic Tests", () => {
       expect(analytics.todaySales).toBe(160); // 80 * 2
       expect(analytics.monthlyProfit).toBe(60); // (80 - 50) * 2
       expect(analytics.totalProfit).toBe(60);  // (80 - 50) * 2
+      expect(calculateSaleProfit(sales[0])).toBe(analytics.monthlyProfit);
+      const { dateKey, dateLabel } = getSaleDateKey(sales[0]);
+      expect(dateKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(dateLabel.length).toBeGreaterThan(0);
 
       console.log("sales analytics test passed!");
     });

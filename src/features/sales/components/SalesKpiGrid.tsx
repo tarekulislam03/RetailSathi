@@ -30,7 +30,7 @@ export const SalesKpiGrid: React.FC<SalesKpiGridProps> = ({ analytics }) => {
       </div>
 
       <div className="stat-card">
-        <span className="stat-label">Est. Monthly Profit</span>
+        <span className="stat-label">Monthly Profit</span>
         <span className="stat-value" style={{ color: "#055e37" }}>
           ₹{analytics.monthlyProfit.toFixed(2)}
         </span>

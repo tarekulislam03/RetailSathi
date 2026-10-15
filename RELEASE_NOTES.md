@@ -1,3 +1,13 @@
+# Retail Sathi v0.2.3 - Day-Wise Sales & Profit Reports, Real Profit Sync & Label MRP Refinements
+
+### 🚀 Key Features & Enhancements
+- **Day-Wise Sales & Profitability Ledger**: Added a dedicated Day-Wise view in the Manage Sales & Profit Reports modal. Cashiers and store owners can now toggle between Monthly and Day-Wise views, view sales, costs, discounts, and margins for each day, or drill into any month with one-click "Days ➔".
+- **Real Monthly Profit Synchronization**: Realigned dashboard "Monthly Profit" calculation with the Manage Sales & Profit ledger to ensure numbers always match identically.
+- **Sale Items Deduplication & Cost Protection**: Added multi-layer safeguards in the sync engine and sales service to prevent duplicated line items from inflating cost calculations.
+- **Product Label MRP Font Optimization**: Increased MRP font size and weight on product labels and print templates for improved scan readability and clarity.
+
+---
+
 # Retail Sathi v0.2.2 - Hold & Resume Bills, Scannable EAN-13 Barcodes & Checkout Click Protection
 
 ### 🚀 Key Features & Enhancements

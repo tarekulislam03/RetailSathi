@@ -491,4 +491,19 @@ async function initTables(db: Database) {
   } catch (migErr) {
     console.warn("Could not migrate legacy sale_items foreign key constraint:", migErr);
   }
+
+  // Deduplicate legacy duplicate sale_items if any exist from earlier sync anomalies
+  try {
+    await db.execute(`
+      DELETE FROM sale_items
+      WHERE id NOT IN (
+        SELECT min(id)
+        FROM sale_items
+        WHERE id IS NOT NULL
+        GROUP BY invoice_no, product_id, quantity, price
+      )
+    `);
+  } catch (cleanErr) {
+    console.warn("Could not clean up duplicate sale_items:", cleanErr);
+  }
 }
