@@ -8,6 +8,15 @@ interface BarcodeSearchProps {
   todayBillsCount?: number;
 }
 
+export const FOCUS_SEARCH_EVENT = "retail_sathi_focus_search";
+
+export function focusProductSearch() {
+  window.dispatchEvent(new CustomEvent(FOCUS_SEARCH_EVENT));
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent(FOCUS_SEARCH_EVENT));
+  }, 20);
+}
+
 export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
   products,
   onAddToCart,
@@ -19,6 +28,9 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const focusSearch = () => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 15);
@@ -27,31 +39,36 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
   useEffect(() => {
     focusSearch();
 
+    const handleFocusSearchEvent = () => {
+      focusSearch();
+    };
+    window.addEventListener(FOCUS_SEARCH_EVENT, handleFocusSearchEvent);
+
     const handleWindowClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
 
-      // Check if user clicked an interactive input, navigation link, sidebar, button, or modal dialog
+      // Check if user clicked an interactive input, navigation link, sidebar, modal dialog, or checkout panel
       const isInteractive =
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
         target.tagName === "SELECT" ||
         target.tagName === "A" ||
-        target.tagName === "BUTTON" ||
         target.isContentEditable ||
         target.closest("a") !== null ||
-        target.closest("button") !== null ||
         target.closest(".sidebar") !== null ||
         target.closest(".modal-overlay") !== null ||
         target.closest(".modal-backdrop") !== null ||
-        target.closest(".modal-content") !== null;
+        target.closest(".modal-content") !== null ||
+        target.closest(".checkout-card") !== null ||
+        target.closest(".pos-right") !== null;
 
-      // If user clicked inside an interactive element, link, sidebar, or modal, do NOT steal focus
+      // If user clicked inside an interactive element, link, sidebar, modal, or checkout, do NOT steal focus
       if (isInteractive) {
         return;
       }
 
-      // If user clicked anywhere else on the billing page background, restore focus to search bar
+      // If user clicked anywhere else on the billing page background, cart table, or buttons, restore focus to search bar
       focusSearch();
     };
 
@@ -66,8 +83,18 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
         document.activeElement.tagName === "INPUT" &&
         document.activeElement !== searchInputRef.current
       ) {
+        const active = document.activeElement as HTMLElement;
+        // Don't intercept Enter inside modal dialogs
+        if (
+          active.closest(".modal-overlay") ||
+          active.closest(".modal-backdrop") ||
+          active.closest(".modal-content")
+        ) {
+          return;
+        }
         // Pressing Enter in non-search inputs completes editing and returns focus to search bar
-        (document.activeElement as HTMLElement).blur();
+        e.preventDefault();
+        active.blur();
         focusSearch();
       }
     };
@@ -76,6 +103,7 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
     window.addEventListener("keydown", handleKeyDownGlobal);
 
     return () => {
+      window.removeEventListener(FOCUS_SEARCH_EVENT, handleFocusSearchEvent);
       window.removeEventListener("click", handleWindowClick);
       window.removeEventListener("keydown", handleKeyDownGlobal);
     };

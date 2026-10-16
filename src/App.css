@@ -791,6 +791,7 @@ html, body {
   overflow-y: auto;
   border: 1px solid #7092be;
   background-color: #ffffff;
+  scroll-behavior: smooth;
 }
 
 .pos-cart-card .product-table {
@@ -809,6 +810,18 @@ html, body {
 .pos-cart-card .product-table td {
   padding: clamp(4px, 0.8vh, 8px) clamp(6px, 1vw, 10px);
   font-size: clamp(0.78rem, 0.9vw, 0.85rem);
+}
+
+/* Subtle background highlight for the last cart item */
+.pos-cart-card .product-table tbody tr.last-cart-item,
+.pos-cart-card .product-table tbody tr.last-cart-item:nth-child(even),
+.pos-cart-card .product-table tbody tr.last-cart-item td {
+  background-color: #e0f2fe;
+}
+
+.pos-cart-card .product-table tbody tr.last-cart-item:hover,
+.pos-cart-card .product-table tbody tr.last-cart-item:hover td {
+  background-color: #bae6fd;
 }
 
 /* Quantity controls in POS cart */

@@ -7,7 +7,7 @@ import { MarketingPerson } from "../../marketing/types";
 import { fetchMarketingPersons } from "../../marketing/services/marketingService";
 import { createSale, fetchTodayBillsCount } from "../services/billingService";
 import { CartItem, Sale, HeldBill } from "../types";
-import { BarcodeSearch } from "../components/BarcodeSearch";
+import { BarcodeSearch, focusProductSearch } from "../components/BarcodeSearch";
 import { CartTable } from "../components/CartTable";
 import { CheckoutPanel } from "../components/CheckoutPanel";
 import { ReceiptModal } from "../components/ReceiptModal";
@@ -194,6 +194,7 @@ export const BillingPage: React.FC = () => {
 
   function handleRemoveItem(productId: number) {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
+    focusProductSearch();
   }
 
   async function handleSaveNewProduct(payload: ProductInput) {
@@ -203,6 +204,7 @@ export const BillingPage: React.FC = () => {
 
       // Automatically add the new product to the cart
       handleAddToCart(createdProd);
+      focusProductSearch();
 
       // Refresh product list in background
       await loadBillingData();
@@ -286,6 +288,7 @@ export const BillingPage: React.FC = () => {
 
       setCompletedSale(saleResult);
       await loadBillingData();
+      focusProductSearch();
     } catch (err: any) {
       console.error("Checkout error:", err);
       setError(err?.message || "Failed to complete transaction.");
@@ -336,6 +339,7 @@ export const BillingPage: React.FC = () => {
     setError(null);
     setInfoMsg(`✓ Order for "${saved.customer_name || 'Walk-in Customer'}" (₹${grandTotal.toFixed(2)}) is on hold.`);
     setTimeout(() => setInfoMsg(null), 4000);
+    focusProductSearch();
   }
 
   handleHoldBillRef.current = handleHoldBill;
@@ -382,6 +386,7 @@ export const BillingPage: React.FC = () => {
     setError(null);
     setInfoMsg(`✓ Resumed order for "${bill.customer_name || 'Walk-in Customer'}".`);
     setTimeout(() => setInfoMsg(null), 3000);
+    focusProductSearch();
   }
 
   function handleDiscardHeldBill(id: string) {
@@ -452,7 +457,10 @@ export const BillingPage: React.FC = () => {
             onUpdatePrice={handleUpdateCartPrice}
             onUpdateMrp={handleUpdateCartMrp}
             onRemoveItem={handleRemoveItem}
-            onClearCart={() => setCart([])}
+            onClearCart={() => {
+              setCart([]);
+              focusProductSearch();
+            }}
             onOpenAddProduct={() => setIsAddProductOpen(true)}
             onOpenReturnModal={() => setIsReturnModalOpen(true)}
             onHoldBill={handleHoldBill}
@@ -486,19 +494,26 @@ export const BillingPage: React.FC = () => {
           title="Add Product to Inventory & Cart"
           submitButtonText="Save to Inventory & Add to Cart"
           onSave={handleSaveNewProduct}
-          onClose={() => setIsAddProductOpen(false)}
+          onClose={() => {
+            setIsAddProductOpen(false);
+            focusProductSearch();
+          }}
         />
       )}
 
       {isReturnModalOpen && (
         <ReturnModal
           isOpen={isReturnModalOpen}
-          onClose={() => setIsReturnModalOpen(false)}
+          onClose={() => {
+            setIsReturnModalOpen(false);
+            focusProductSearch();
+          }}
           products={products}
           onReturnComplete={(updatedSale) => {
             setIsReturnModalOpen(false);
             setCompletedSale(updatedSale);
             loadBillingData();
+            focusProductSearch();
           }}
         />
       )}
@@ -506,7 +521,10 @@ export const BillingPage: React.FC = () => {
       {isHeldBillsOpen && (
         <HeldBillsModal
           isOpen={isHeldBillsOpen}
-          onClose={() => setIsHeldBillsOpen(false)}
+          onClose={() => {
+            setIsHeldBillsOpen(false);
+            focusProductSearch();
+          }}
           heldBills={heldBills}
           onResume={handleResumeBill}
           onDiscard={handleDiscardHeldBill}
@@ -517,7 +535,10 @@ export const BillingPage: React.FC = () => {
       {completedSale && (
         <ReceiptModal
           sale={completedSale}
-          onClose={() => setCompletedSale(null)}
+          onClose={() => {
+            setCompletedSale(null);
+            focusProductSearch();
+          }}
           autoPrint={false}
         />
       )}
