@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { CartItem } from "../types";
 import { Pagination } from "../../../components/common/Pagination";
+import { focusProductSearch } from "./BarcodeSearch";
 
 interface CartTableProps {
   cart: CartItem[];
@@ -15,6 +16,342 @@ interface CartTableProps {
   onOpenHeldBills?: () => void;
   heldBillsCount?: number;
 }
+
+interface CartTableRowProps {
+  item: CartItem;
+  onUpdateQty: (productId: number, newQty: number) => void;
+  onUpdatePrice?: (productId: number, newPrice: number) => void;
+  onUpdateMrp?: (productId: number, newMrp: number) => void;
+  onRemoveItem: (productId: number) => void;
+  isLastItem?: boolean;
+}
+
+const CartTableRow: React.FC<CartTableRowProps> = ({
+  item,
+  onUpdateQty,
+  onUpdatePrice,
+  onUpdateMrp,
+  onRemoveItem,
+  isLastItem = false,
+}) => {
+  const mrpInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
+
+  const [mrpVal, setMrpVal] = useState<string>(() =>
+    item.product.mrp != null ? String(item.product.mrp) : ""
+  );
+  const [priceVal, setPriceVal] = useState<string>(() =>
+    item.product.price != null ? String(item.product.price) : ""
+  );
+  const [qtyVal, setQtyVal] = useState<string>(() => String(item.quantity));
+
+  useEffect(() => {
+    if (document.activeElement !== mrpInputRef.current) {
+      setMrpVal(item.product.mrp != null ? String(item.product.mrp) : "");
+    }
+  }, [item.product.mrp]);
+
+  useEffect(() => {
+    if (document.activeElement !== priceInputRef.current) {
+      setPriceVal(item.product.price != null ? String(item.product.price) : "");
+    }
+  }, [item.product.price]);
+
+  useEffect(() => {
+    if (document.activeElement !== qtyInputRef.current) {
+      setQtyVal(String(item.quantity));
+    }
+  }, [item.quantity]);
+
+  const handleMrpChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMrpVal(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= 0) {
+      onUpdateMrp?.(item.product.id, num);
+    }
+  };
+
+  const handleMrpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const num = parseFloat(mrpVal);
+      if (!isNaN(num) && num >= 0) {
+        onUpdateMrp?.(item.product.id, num);
+      } else {
+        setMrpVal(item.product.mrp != null ? String(item.product.mrp) : "");
+      }
+      mrpInputRef.current?.blur();
+      focusProductSearch();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setMrpVal(item.product.mrp != null ? String(item.product.mrp) : "");
+      mrpInputRef.current?.blur();
+      focusProductSearch();
+    }
+  };
+
+  const handleMrpBlur = () => {
+    const num = parseFloat(mrpVal);
+    if (isNaN(num) || num < 0) {
+      setMrpVal(item.product.mrp != null ? String(item.product.mrp) : "");
+    } else {
+      onUpdateMrp?.(item.product.id, num);
+    }
+    setTimeout(() => {
+      const active = document.activeElement;
+      const isOtherInput =
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT");
+      const isProtected =
+        active &&
+        (active.closest(".sidebar") ||
+          active.closest(".modal-content") ||
+          active.closest(".modal-backdrop") ||
+          active.closest(".checkout-card") ||
+          active.closest(".pos-right"));
+      if (!isOtherInput || !isProtected) {
+        focusProductSearch();
+      }
+    }, 20);
+  };
+
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setPriceVal(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= 0) {
+      onUpdatePrice?.(item.product.id, num);
+    }
+  };
+
+  const handlePriceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const num = parseFloat(priceVal);
+      if (!isNaN(num) && num >= 0) {
+        onUpdatePrice?.(item.product.id, num);
+      } else {
+        setPriceVal(item.product.price != null ? String(item.product.price) : "");
+      }
+      priceInputRef.current?.blur();
+      focusProductSearch();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setPriceVal(item.product.price != null ? String(item.product.price) : "");
+      priceInputRef.current?.blur();
+      focusProductSearch();
+    }
+  };
+
+  const handlePriceBlur = () => {
+    const num = parseFloat(priceVal);
+    if (isNaN(num) || num < 0) {
+      setPriceVal(item.product.price != null ? String(item.product.price) : "");
+    } else {
+      onUpdatePrice?.(item.product.id, num);
+    }
+    setTimeout(() => {
+      const active = document.activeElement;
+      const isOtherInput =
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT");
+      const isProtected =
+        active &&
+        (active.closest(".sidebar") ||
+          active.closest(".modal-content") ||
+          active.closest(".modal-backdrop") ||
+          active.closest(".checkout-card") ||
+          active.closest(".pos-right"));
+      if (!isOtherInput || !isProtected) {
+        focusProductSearch();
+      }
+    }, 20);
+  };
+
+  const handleQtyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setQtyVal(val);
+    const num = parseInt(val, 10);
+    // While typing, only update parent if it is a valid positive integer.
+    // Do NOT call onUpdateQty(id, 0) on empty string or 0 to prevent accidentally deleting product while typing.
+    if (!isNaN(num) && num > 0) {
+      onUpdateQty(item.product.id, num);
+    }
+  };
+
+  const handleQtyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      const num = parseInt(qtyVal, 10);
+      if (!isNaN(num) && num > 0) {
+        onUpdateQty(item.product.id, num);
+      } else {
+        setQtyVal(String(item.quantity));
+      }
+      qtyInputRef.current?.blur();
+      focusProductSearch();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setQtyVal(String(item.quantity));
+      qtyInputRef.current?.blur();
+      focusProductSearch();
+    }
+  };
+
+  const handleQtyBlur = () => {
+    const num = parseInt(qtyVal, 10);
+    if (isNaN(num) || num <= 0) {
+      setQtyVal(String(item.quantity));
+    } else {
+      onUpdateQty(item.product.id, num);
+    }
+    setTimeout(() => {
+      const active = document.activeElement;
+      const isOtherInput =
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT");
+      const isProtected =
+        active &&
+        (active.closest(".sidebar") ||
+          active.closest(".modal-content") ||
+          active.closest(".modal-backdrop") ||
+          active.closest(".checkout-card") ||
+          active.closest(".pos-right"));
+      if (!isOtherInput || !isProtected) {
+        focusProductSearch();
+      }
+    }, 20);
+  };
+
+  return (
+    <tr className={isLastItem ? "last-cart-item" : ""}>
+      <td className="font-semibold">{item.product.name}</td>
+      <td>
+        <code className="barcode-tag">{item.product.barcode || "-"}</code>
+      </td>
+      <td>
+        <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+          <span style={{ fontSize: "0.82rem", color: "#64748b" }}>₹</span>
+          <input
+            ref={mrpInputRef}
+            type="number"
+            step="any"
+            min="0"
+            value={mrpVal}
+            onChange={handleMrpChange}
+            onKeyDown={handleMrpKeyDown}
+            onBlur={handleMrpBlur}
+            className="cart-price-input"
+            style={{
+              width: "72px",
+              padding: "2px 4px",
+              fontSize: "0.82rem",
+              fontWeight: 600,
+              textAlign: "right",
+              border: "1px solid #cbd5e1",
+              borderRadius: "4px",
+              background: "#ffffff",
+            }}
+            title="Edit MRP (affects database upon sale)"
+          />
+        </div>
+      </td>
+      <td>
+        <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+          <span style={{ fontSize: "0.82rem", color: "#64748b" }}>₹</span>
+          <input
+            ref={priceInputRef}
+            type="number"
+            step="any"
+            min="0"
+            value={priceVal}
+            onChange={handlePriceChange}
+            onKeyDown={handlePriceKeyDown}
+            onBlur={handlePriceBlur}
+            className="cart-price-input"
+            style={{
+              width: "72px",
+              padding: "2px 4px",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              color: "#166534",
+              textAlign: "right",
+              border: "1px solid #86efac",
+              borderRadius: "4px",
+              background: "#f0fdf4",
+            }}
+            title="Edit Selling Price (affects database upon sale)"
+          />
+        </div>
+      </td>
+      <td>
+        <div className="qty-controls">
+          <button
+            type="button"
+            className="qty-btn"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onUpdateQty(item.product.id, item.quantity - 1);
+              focusProductSearch();
+            }}
+            title="Decrease quantity"
+          >
+            -
+          </button>
+          <input
+            ref={qtyInputRef}
+            type="number"
+            className="qty-input"
+            value={qtyVal}
+            onChange={handleQtyChange}
+            onKeyDown={handleQtyKeyDown}
+            onBlur={handleQtyBlur}
+            min="1"
+            max={item.product.stock}
+            title="Adjust quantity"
+          />
+          <button
+            type="button"
+            className="qty-btn"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onUpdateQty(item.product.id, item.quantity + 1);
+              focusProductSearch();
+            }}
+            title="Increase quantity"
+          >
+            +
+          </button>
+        </div>
+      </td>
+      <td className="price-tag">
+        ₹{(item.product.price * item.quantity).toFixed(2)}
+      </td>
+      <td>
+        <button
+          type="button"
+          className="btn-icon delete-btn"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onRemoveItem(item.product.id);
+            focusProductSearch();
+          }}
+          title="Remove item"
+        >
+          Remove
+        </button>
+      </td>
+    </tr>
+  );
+};
 
 export const CartTable: React.FC<CartTableProps> = ({
   cart,
@@ -31,6 +368,8 @@ export const CartTable: React.FC<CartTableProps> = ({
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const prevCartLengthRef = useRef(cart.length);
 
   const totalItems = cart.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -41,9 +380,42 @@ export const CartTable: React.FC<CartTableProps> = ({
     }
   }, [currentPage, totalPages]);
 
+  // Auto-scroll cart item list when items grow beyond the visible window
+  useEffect(() => {
+    if (cart.length > prevCartLengthRef.current) {
+      const newTotalPages = Math.ceil(cart.length / pageSize) || 1;
+      if (currentPage !== newTotalPages) {
+        setCurrentPage(newTotalPages);
+      }
+
+      const scrollToBottom = () => {
+        const el = tableContainerRef.current;
+        if (el) {
+          el.scrollTo({
+            top: el.scrollHeight,
+            behavior: "smooth",
+          });
+        }
+      };
+
+      requestAnimationFrame(scrollToBottom);
+      const timer = setTimeout(() => {
+        const el = tableContainerRef.current;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+      }, 60);
+
+      prevCartLengthRef.current = cart.length;
+      return () => clearTimeout(timer);
+    }
+    prevCartLengthRef.current = cart.length;
+  }, [cart.length, currentPage, pageSize]);
+
   const safePage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (safePage - 1) * pageSize;
   const paginatedCart = cart.slice(startIndex, startIndex + pageSize);
+  const lastCartItemId = cart.length > 0 ? cart[cart.length - 1].product.id : null;
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
@@ -158,7 +530,15 @@ export const CartTable: React.FC<CartTableProps> = ({
           )}
 
           {cart.length > 0 && (
-            <button className="btn secondary-btn" onClick={onClearCart}>
+            <button
+              type="button"
+              className="btn secondary-btn"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onClearCart();
+                focusProductSearch();
+              }}
+            >
               Clear Cart
             </button>
           )}
@@ -188,7 +568,7 @@ export const CartTable: React.FC<CartTableProps> = ({
         </div>
       ) : (
         <>
-          <div className="table-responsive">
+          <div ref={tableContainerRef} className="table-responsive">
             <table className="product-table">
               <thead>
                 <tr>
@@ -203,113 +583,15 @@ export const CartTable: React.FC<CartTableProps> = ({
               </thead>
               <tbody>
                 {paginatedCart.map((item) => (
-                  <tr key={item.product.id}>
-                    <td className="font-semibold">{item.product.name}</td>
-                    <td>
-                      <code className="barcode-tag">
-                        {item.product.barcode || "-"}
-                      </code>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
-                        <span style={{ fontSize: "0.82rem", color: "#64748b" }}>₹</span>
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={item.product.mrp ?? ""}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            onUpdateMrp?.(item.product.id, isNaN(val) ? 0 : val);
-                          }}
-                          className="cart-price-input"
-                          style={{
-                            width: "72px",
-                            padding: "2px 4px",
-                            fontSize: "0.82rem",
-                            fontWeight: 600,
-                            textAlign: "right",
-                            border: "1px solid #cbd5e1",
-                            borderRadius: "4px",
-                            background: "#ffffff",
-                          }}
-                          title="Edit MRP (affects database upon sale)"
-                        />
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
-                        <span style={{ fontSize: "0.82rem", color: "#64748b" }}>₹</span>
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={item.product.price ?? ""}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            onUpdatePrice?.(item.product.id, isNaN(val) ? 0 : val);
-                          }}
-                          className="cart-price-input"
-                          style={{
-                            width: "72px",
-                            padding: "2px 4px",
-                            fontSize: "0.82rem",
-                            fontWeight: 700,
-                            color: "#166534",
-                            textAlign: "right",
-                            border: "1px solid #86efac",
-                            borderRadius: "4px",
-                            background: "#f0fdf4",
-                          }}
-                          title="Edit Selling Price (affects database upon sale)"
-                        />
-                      </div>
-                    </td>
-                    <td>
-                      <div className="qty-controls">
-                        <button
-                          className="qty-btn"
-                          onClick={() =>
-                            onUpdateQty(item.product.id, item.quantity - 1)
-                          }
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          className="qty-input"
-                          value={item.quantity}
-                          onChange={(e) =>
-                            onUpdateQty(
-                              item.product.id,
-                              parseInt(e.target.value, 10) || 0
-                            )
-                          }
-                          min="1"
-                          max={item.product.stock}
-                        />
-                        <button
-                          className="qty-btn"
-                          onClick={() =>
-                            onUpdateQty(item.product.id, item.quantity + 1)
-                          }
-                        >
-                          +
-                        </button>
-                      </div>
-                    </td>
-                    <td className="price-tag">
-                      ₹{(item.product.price * item.quantity).toFixed(2)}
-                    </td>
-                    <td>
-                      <button
-                        className="btn-icon delete-btn"
-                        onClick={() => onRemoveItem(item.product.id)}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
+                  <CartTableRow
+                    key={item.product.id}
+                    item={item}
+                    onUpdateQty={onUpdateQty}
+                    onUpdatePrice={onUpdatePrice}
+                    onUpdateMrp={onUpdateMrp}
+                    onRemoveItem={onRemoveItem}
+                    isLastItem={item.product.id === lastCartItemId}
+                  />
                 ))}
               </tbody>
             </table>

@@ -1,3 +1,16 @@
+# Retail Sathi v0.2.4 - Billing Caret Lock, Cart Auto-Scroll & Last Item Highlight
+
+### 🚀 Key Features & Enhancements
+- **Billing Caret Lock & Continuous Scanner Readiness**: Ensured caret focus is continuously locked on the product search bar for zero-delay barcode scanning.
+  - Cart item removals (via row "Remove" button or "Clear Cart") automatically restore caret focus to product search.
+  - Quantity `+` and `-` stepper buttons prevent button focus theft on click (`onMouseDown` default suppression) and immediately refocus product search.
+  - Direct quantity editing allows natural backspacing without accidentally deleting the item mid-typing.
+  - Decimal rates and MRP modifications are preserved cleanly without cursor jumps, and pressing `Enter`, `Tab`, or blurring immediately returns the caret to product search.
+- **Auto-Scrolling Cart List**: When cart items grow beyond the visible cart window, the container automatically and smoothly scrolls to the bottom so newly scanned and added items are always in full view.
+- **Last Cart Item Highlight**: Added a subtle, clean sky-blue background highlight (`#e0f2fe`) for the entire row of the last added cart item so cashiers can instantly spot the most recently added item.
+
+---
+
 # Retail Sathi v0.2.3 - Day-Wise Sales & Profit Reports, Real Profit Sync & Label MRP Refinements
 
 ### 🚀 Key Features & Enhancements
