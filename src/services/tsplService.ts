@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getActiveOrFirstStore } from "../features/stores/services/storeService";
+import { getDevicePrinterSettings, saveDevicePrinterSettings } from "./deviceSettingsService";
+import { getAvailablePrinters } from "./escposService";
 
 export interface LabelSettings {
   printerName?: string;
@@ -80,14 +82,38 @@ export function validateLabelSettings(settings: Partial<LabelSettings>): {
  */
 export async function getLabelSettings(): Promise<LabelSettings> {
   try {
-    const store = await getActiveOrFirstStore();
+    const [store, deviceSettings, availablePrinters] = await Promise.all([
+      getActiveOrFirstStore().catch(() => null),
+      getDevicePrinterSettings(),
+      getAvailablePrinters().catch(() => []),
+    ]);
+
+    let targetPrinter = deviceSettings.barcode_printer;
+    if (targetPrinter && availablePrinters.length > 0) {
+      const exists = availablePrinters.some(
+        (p) => p.name.toLowerCase() === targetPrinter!.toLowerCase()
+      );
+      if (!exists) {
+        // Fall back to printer with label / dcode / tsc in name, or system default
+        const labelDevice = availablePrinters.find((p) =>
+          /dcode|dc421|tsc|label|barcode|xprinter/i.test(p.name)
+        );
+        targetPrinter = labelDevice
+          ? labelDevice.name
+          : availablePrinters.find((p) => p.is_default)?.name || availablePrinters[0]?.name;
+      }
+    } else if (!targetPrinter && availablePrinters.length > 0) {
+      const labelDevice = availablePrinters.find((p) =>
+        /dcode|dc421|tsc|label|barcode|xprinter/i.test(p.name)
+      );
+      targetPrinter = labelDevice
+        ? labelDevice.name
+        : availablePrinters.find((p) => p.is_default)?.name || availablePrinters[0]?.name;
+    }
+
     if (store) {
       return {
-        printerName:
-          store.barcode_printer ||
-          (typeof window !== "undefined"
-            ? localStorage.getItem(STORAGE_KEYS.printer) || undefined
-            : undefined),
+        printerName: targetPrinter,
         labelWidthMm:
           store.label_width_mm && store.label_width_mm > 0
             ? Number(store.label_width_mm)
@@ -149,13 +175,14 @@ export async function getLabelSettings(): Promise<LabelSettings> {
 }
 
 /**
- * Save label settings to localStorage.
+ * Save label settings to localStorage and local device database.
  */
 export function saveLabelSettingsToStorage(settings: Partial<LabelSettings>) {
   if (typeof window === "undefined") return;
   if (settings.printerName !== undefined) {
     if (settings.printerName) localStorage.setItem(STORAGE_KEYS.printer, settings.printerName);
     else localStorage.removeItem(STORAGE_KEYS.printer);
+    saveDevicePrinterSettings({ barcode_printer: settings.printerName || "" }).catch(() => {});
   }
   if (settings.labelWidthMm !== undefined) localStorage.setItem(STORAGE_KEYS.width, String(settings.labelWidthMm));
   if (settings.labelHeightMm !== undefined) localStorage.setItem(STORAGE_KEYS.height, String(settings.labelHeightMm));

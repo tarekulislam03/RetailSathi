@@ -18,13 +18,17 @@ const STORE_SELECT_FIELDS = `
 // label settings. Synced to the cloud `settings` table; newest write wins.
 // ---------------------------------------------------------------------------
 
+import { getLocalDevicePrinterSettingsSync } from "../../../services/deviceSettingsService";
+
 const BOOL_SETTING_KEYS = [
   "show_barcode", "show_upi_qr", "show_header", "show_customer", "show_savings",
   "show_tax", "show_return_policy", "mandatory_bill_note", "label_duplicate_odd",
 ] as const;
 
+// Excluded hardware printer keys (paper_width, default_printer, barcode_printer)
+// because they are device-specific and saved only to local database, not synced to Supabase.
 const NUM_SETTING_KEYS = [
-  "paper_width", "label_width_mm", "label_height_mm", "label_gap_mm",
+  "label_width_mm", "label_height_mm", "label_gap_mm",
   "label_columns", "label_column_gap_mm", "label_row_gap_mm", "label_padding_mm",
   "label_offset_x_dots", "label_offset_y_dots",
 ] as const;
@@ -32,7 +36,6 @@ const NUM_SETTING_KEYS = [
 const TEXT_SETTING_KEYS = [
   "address", "phone", "email", "gstin", "fssai", "tagline", "promo_text",
   "logo_url", "return_policy", "upi_id", "upi_name", "receipt_footer",
-  "default_printer", "barcode_printer",
 ] as const;
 
 const ALL_SETTING_KEYS: string[] = [
@@ -119,6 +122,19 @@ async function applySettings(db: any, store: Store): Promise<Store> {
       merged[key] = value === null || value === "" ? null : value;
     }
   }
+
+  // Overlay device-specific hardware printer settings from this device's local database/localStorage
+  const localDeviceSettings = getLocalDevicePrinterSettingsSync();
+  if (localDeviceSettings.pos_printer !== undefined) {
+    merged.default_printer = localDeviceSettings.pos_printer;
+  }
+  if (localDeviceSettings.pos_paper_width !== undefined) {
+    merged.paper_width = localDeviceSettings.pos_paper_width;
+  }
+  if (localDeviceSettings.barcode_printer !== undefined) {
+    merged.barcode_printer = localDeviceSettings.barcode_printer;
+  }
+
   return merged as Store;
 }
 
@@ -457,16 +473,6 @@ export async function updateStore(
     params.push(input.receipt_footer?.trim() || null);
   }
 
-  if (input.paper_width !== undefined) {
-    updates.push(`paper_width = $${paramIdx++}`);
-    params.push(input.paper_width ?? 80);
-  }
-
-  if (input.default_printer !== undefined) {
-    updates.push(`default_printer = $${paramIdx++}`);
-    params.push(input.default_printer?.trim() || null);
-  }
-
   if (input.show_barcode !== undefined) {
     updates.push(`show_barcode = $${paramIdx++}`);
     params.push(input.show_barcode ? 1 : 0);
@@ -505,11 +511,6 @@ export async function updateStore(
   if (input.mandatory_bill_note !== undefined) {
     updates.push(`mandatory_bill_note = $${paramIdx++}`);
     params.push(input.mandatory_bill_note ? 1 : 0);
-  }
-
-  if (input.barcode_printer !== undefined) {
-    updates.push(`barcode_printer = $${paramIdx++}`);
-    params.push(input.barcode_printer?.trim() || null);
   }
 
   if (input.label_width_mm !== undefined) {

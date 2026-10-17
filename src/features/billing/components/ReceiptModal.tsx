@@ -10,6 +10,10 @@ import { loadReceiptStoreInfo } from "../../../services/receiptStoreInfo";
 import { Pagination } from "../../../components/common/Pagination";
 import { formatTo12Hour } from "../../../utils/dateUtils";
 import { generateEan13Svg } from "../../../utils/ean13";
+import {
+  getDevicePrinterSettings,
+  saveDevicePrinterSettings,
+} from "../../../services/deviceSettingsService";
 
 interface ReceiptModalProps {
   sale: Sale;
@@ -104,33 +108,43 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    Promise.all([loadReceiptStoreInfo(), getAvailablePrinters()]).then(
-      ([store, list]) => {
-        if (!isMounted) return;
-        setStoreInfo(store);
-        setPrinters(list);
+    Promise.all([
+      loadReceiptStoreInfo(),
+      getAvailablePrinters(),
+      getDevicePrinterSettings(),
+    ]).then(([store, list, deviceSettings]) => {
+      if (!isMounted) return;
+      setStoreInfo(store);
+      setPrinters(list);
 
-        const currentPaperWidth = (store.paper_width as 58 | 80) || paperWidth;
-        if (store.paper_width) {
-          setPaperWidth(currentPaperWidth);
-        }
+      const currentPaperWidth =
+        deviceSettings.pos_paper_width ||
+        (store.paper_width as 58 | 80) ||
+        paperWidth;
+      setPaperWidth(currentPaperWidth);
 
-        const defaultName =
-          selectedPrinter ||
-          store.default_printer ||
-          list.find((p) => p.is_default)?.name ||
-          list[0]?.name ||
-          "";
-        if (defaultName && !selectedPrinter) {
-          setSelectedPrinter(defaultName);
-        }
-
-        if (autoPrint && !hasAutoPrintedRef.current) {
-          hasAutoPrintedRef.current = true;
-          executePrint(store, defaultName, currentPaperWidth);
-        }
+      let defaultName =
+        deviceSettings.pos_printer ||
+        selectedPrinter ||
+        store.default_printer ||
+        "";
+      const exists = list.some(
+        (p) => p.name.toLowerCase() === defaultName.toLowerCase()
+      );
+      if (!exists && list.length > 0) {
+        const sysDef = list.find((p) => p.is_default);
+        defaultName = sysDef ? sysDef.name : list[0]?.name || "";
       }
-    );
+
+      if (defaultName) {
+        setSelectedPrinter(defaultName);
+      }
+
+      if (autoPrint && !hasAutoPrintedRef.current) {
+        hasAutoPrintedRef.current = true;
+        executePrint(store, defaultName, currentPaperWidth);
+      }
+    });
 
     return () => {
       isMounted = false;
@@ -142,6 +156,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("selected_pos_printer", printerName);
     }
+    saveDevicePrinterSettings({ pos_printer: printerName }).catch((err) => {
+      console.warn("Failed to persist pos_printer to local device settings:", err);
+    });
   };
 
   const handlePrint = () => {

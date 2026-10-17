@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { CartItem } from "../types";
 import { Customer } from "../../customers/types";
 import { MarketingPerson } from "../../marketing/types";
+import { CheckoutPaymentDetails } from "./CheckoutInvoiceModal";
 
 interface CheckoutPanelProps {
   cart: CartItem[];
@@ -15,13 +16,7 @@ interface CheckoutPanelProps {
   setMarketingPersonId: (val: number | null) => void;
   paymentMode: string;
   setPaymentMode: (val: string) => void;
-  onCheckout: (paymentDetails?: {
-    paymentMode: string;
-    paidAmount: number;
-    dueAmount: number;
-    cashPaid: number;
-    upiPaid: number;
-  }) => void;
+  onCheckout: (paymentDetails: CheckoutPaymentDetails) => void;
   isProcessing?: boolean;
 }
 
@@ -41,8 +36,6 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
   isProcessing = false,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [hasClicked, setHasClicked] = useState(false);
-  const checkoutLockRef = useRef(false);
 
   // Split Payment Inputs
   const [cashPaidInput, setCashPaidInput] = useState<string>("");
@@ -72,13 +65,11 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
     setSinglePaidInput(grandTotal > 0 ? String(grandTotal) : "");
   }, [grandTotal]);
 
-  // Clear split payment inputs and click lock when cart is cleared
+  // Clear split payment inputs when cart is cleared
   useEffect(() => {
     if (cart.length === 0) {
       setCashPaidInput("");
       setUpiPaidInput("");
-      setHasClicked(false);
-      checkoutLockRef.current = false;
     }
   }, [cart.length]);
 
@@ -143,7 +134,6 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
   );
 
   const isCheckoutBlocked =
-    hasClicked ||
     isProcessing ||
     cart.length === 0 ||
     (dueAmount > 0 && !isCustomerProvided);
@@ -632,15 +622,9 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
 
       <button
         className="btn primary-btn checkout-btn"
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
         onClick={(e) => {
           e.preventDefault();
-          if (hasClicked || isProcessing || checkoutLockRef.current || isCheckoutBlocked) return;
-          setHasClicked(true);
-          checkoutLockRef.current = true;
+          if (isCheckoutBlocked) return;
           let finalPaymentMode = paymentMode;
           if (paymentMode === "Split (Cash + UPI)") {
             finalPaymentMode = "Split (Cash + UPI)";
@@ -660,7 +644,7 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
             : undefined
         }
       >
-        {isProcessing || hasClicked ? "PROCESSING BILL..." : "COMPLETE SALE & VIEW BILL"}
+        {isProcessing ? "Processing..." : "Checkout"}
       </button>
     </div>
   );

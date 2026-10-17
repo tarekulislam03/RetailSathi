@@ -227,6 +227,15 @@ async function initTables(db: Database) {
     );
   `);
 
+  // Device-specific settings table (LOCAL to this device only, never synced to Supabase)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS device_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // Users table (offline auth credentials & role management)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS users (

@@ -11,6 +11,10 @@ import { BarcodeSearch, focusProductSearch } from "../components/BarcodeSearch";
 import { CartTable } from "../components/CartTable";
 import { CheckoutPanel } from "../components/CheckoutPanel";
 import { ReceiptModal } from "../components/ReceiptModal";
+import {
+  CheckoutInvoiceModal,
+  CheckoutPaymentDetails,
+} from "../components/CheckoutInvoiceModal";
 import { ProductModal } from "../../inventory/components/ProductModal";
 import { ReturnModal } from "../components/ReturnModal";
 import { HeldBillsModal } from "../components/HeldBillsModal";
@@ -21,6 +25,11 @@ import {
   clearAllHeldBills,
 } from "../services/heldBillsService";
 
+import {
+  printReceiptEscPos,
+  StoreReceiptInfo,
+} from "../../../services/escposService";
+import { loadReceiptStoreInfo } from "../../../services/receiptStoreInfo";
 import { pullDataFromCloud } from "../../../services/syncProcessor";
 import { useDbRefresh } from "../../../hooks/useDbRefresh";
 
@@ -42,6 +51,10 @@ export const BillingPage: React.FC = () => {
 
   // Completed Receipt Modal
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+
+  // Checkout Invoice Preview Modal
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [pendingPaymentDetails, setPendingPaymentDetails] = useState<CheckoutPaymentDetails | null>(null);
 
   // Quick Add Product Modal (for accidental billing of items not yet in inventory)
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -214,17 +227,27 @@ export const BillingPage: React.FC = () => {
     }
   }
 
-  async function handleCheckout(paymentDetails?: {
-    paymentMode: string;
-    paidAmount: number;
-    dueAmount: number;
-    cashPaid: number;
-    upiPaid: number;
-  }) {
+  function handleInitiateCheckout(details: CheckoutPaymentDetails) {
+    if (cart.length === 0) {
+      setError("Cannot checkout: Cart is empty.");
+      return;
+    }
+    setPendingPaymentDetails(details);
+    setIsCheckoutModalOpen(true);
+  }
+
+  async function handleConfirmCheckout(
+    action: "save" | "print",
+    printerOptions?: {
+      printerName?: string;
+      paperWidth?: 58 | 80;
+      storeInfo?: StoreReceiptInfo | null;
+    }
+  ) {
     if (isCheckingOutRef.current || isCheckingOut) {
       return;
     }
-    if (cart.length === 0) {
+    if (cart.length === 0 || !pendingPaymentDetails) {
       setError("Cannot checkout: Cart is empty.");
       return;
     }
@@ -262,11 +285,11 @@ export const BillingPage: React.FC = () => {
         total_mrp: totalMRP,
         discount: totalDiscount,
         tax_amount: totalGstAmount,
-        payment_mode: paymentDetails?.paymentMode || paymentMode,
-        paid_amount: paymentDetails?.paidAmount,
-        due_amount: paymentDetails?.dueAmount,
-        cash_paid: paymentDetails?.cashPaid,
-        upi_paid: paymentDetails?.upiPaid,
+        payment_mode: pendingPaymentDetails.paymentMode,
+        paid_amount: pendingPaymentDetails.paidAmount,
+        due_amount: pendingPaymentDetails.dueAmount,
+        cash_paid: pendingPaymentDetails.cashPaid,
+        upi_paid: pendingPaymentDetails.upiPaid,
         marketing_person_id: marketingPersonId,
         items: cart.map((c) => ({
           product_id: c.product.id,
@@ -279,19 +302,46 @@ export const BillingPage: React.FC = () => {
         })),
       });
 
-      // Clear Form & Cart
+      // If user clicked "Print Bill", send to thermal printer
+      if (action === "print") {
+        try {
+          const freshStore =
+            printerOptions?.storeInfo !== undefined
+              ? printerOptions.storeInfo
+              : await loadReceiptStoreInfo();
+
+          await printReceiptEscPos(saleResult, {
+            printerName: printerOptions?.printerName || undefined,
+            paperWidth: printerOptions?.paperWidth || 80,
+            storeInfo: freshStore || undefined,
+          });
+        } catch (printErr: any) {
+          console.error("Print receipt error:", printErr);
+        }
+      }
+
+      // Clear Form & Cart now that transaction is completed
       setCart([]);
       setCustomerName("");
       setCustomerPhone("");
       setMarketingPersonId(null);
       setPaymentMode("Cash");
+      setPendingPaymentDetails(null);
+      setIsCheckoutModalOpen(false);
 
-      setCompletedSale(saleResult);
+      setInfoMsg(
+        action === "print"
+          ? `✓ Invoice #${saleResult.invoice_no} saved and printed.`
+          : `✓ Invoice #${saleResult.invoice_no} saved successfully.`
+      );
+      setTimeout(() => setInfoMsg(null), 4000);
+
       await loadBillingData();
       focusProductSearch();
     } catch (err: any) {
-      console.error("Checkout error:", err);
+      console.error("Checkout execution error:", err);
       setError(err?.message || "Failed to complete transaction.");
+      throw err;
     } finally {
       isCheckingOutRef.current = false;
       setIsCheckingOut(false);
@@ -482,7 +532,7 @@ export const BillingPage: React.FC = () => {
             setMarketingPersonId={setMarketingPersonId}
             paymentMode={paymentMode}
             setPaymentMode={setPaymentMode}
-            onCheckout={handleCheckout}
+            onCheckout={handleInitiateCheckout}
             isProcessing={isCheckingOut}
           />
         </div>
@@ -529,6 +579,25 @@ export const BillingPage: React.FC = () => {
           onResume={handleResumeBill}
           onDiscard={handleDiscardHeldBill}
           onClearAll={handleClearAllHeldBills}
+        />
+      )}
+
+      {isCheckoutModalOpen && pendingPaymentDetails && (
+        <CheckoutInvoiceModal
+          isOpen={isCheckoutModalOpen}
+          onClose={() => {
+            setIsCheckoutModalOpen(false);
+            focusProductSearch();
+          }}
+          cart={cart}
+          customerName={customerName}
+          customerPhone={customerPhone}
+          marketingPersonName={
+            marketingPersons.find((m) => m.id === marketingPersonId)?.name
+          }
+          paymentDetails={pendingPaymentDetails}
+          onConfirmCheckout={handleConfirmCheckout}
+          isProcessing={isCheckingOut}
         />
       )}
 
