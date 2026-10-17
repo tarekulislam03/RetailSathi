@@ -20,6 +20,10 @@ import {
 import { generateQrSvg, generateUpiUri } from "../../../utils/qrCodeGenerator";
 import { generateCode128Svg } from "../../../utils/code128";
 import { generateEan13Svg } from "../../../utils/ean13";
+import {
+  getDevicePrinterSettings,
+  saveDevicePrinterSettings,
+} from "../../../services/deviceSettingsService";
 
 export const SettingsPage: React.FC = () => {
   const [store, setStore] = useState<Store | null>(null);
@@ -92,12 +96,30 @@ export const SettingsPage: React.FC = () => {
   async function loadSettings() {
     setLoading(true);
     try {
-      const [activeStore, printerList] = await Promise.all([
+      const [activeStore, printerList, deviceSettings] = await Promise.all([
         getActiveOrFirstStore(),
         getAvailablePrinters(),
+        getDevicePrinterSettings(),
       ]);
 
       setPrinters(printerList);
+
+      let initialPosPrinter = deviceSettings.pos_printer || "";
+      if (!initialPosPrinter && printerList.length > 0) {
+        const sysDef = printerList.find((p) => p.is_default);
+        if (sysDef) initialPosPrinter = sysDef.name;
+      }
+      setDefaultPrinter(initialPosPrinter);
+      setPaperWidth(deviceSettings.pos_paper_width || 80);
+
+      let initialBarcodePrinter = deviceSettings.barcode_printer || "";
+      if (!initialBarcodePrinter && printerList.length > 0) {
+        const labelDev = printerList.find((p) =>
+          /dcode|dc421|tsc|label|barcode|xprinter/i.test(p.name)
+        );
+        if (labelDev) initialBarcodePrinter = labelDev.name;
+      }
+      setBarcodePrinter(initialBarcodePrinter);
 
       if (activeStore) {
         setStore(activeStore);
@@ -127,25 +149,13 @@ export const SettingsPage: React.FC = () => {
         setMandatoryBillNote(
           activeStore.mandatory_bill_note !== 0 && activeStore.mandatory_bill_note !== false
         );
-        setDefaultPrinter(
-          activeStore.default_printer ||
-            (typeof localStorage !== "undefined"
-              ? localStorage.getItem("selected_pos_printer") || ""
-              : "")
-        );
-        setPaperWidth(activeStore.paper_width || 80);
         setShowBarcode(activeStore.show_barcode !== 0 && activeStore.show_barcode !== false);
         setReceiptFooter(
           activeStore.receipt_footer ||
             "Thank you for shopping with us!\nPlease visit again!"
         );
 
-        // Barcode Label settings (DCode DC421 Pro TSPL)
-        const loadedBPrinter =
-          activeStore.barcode_printer ||
-          (typeof localStorage !== "undefined"
-            ? localStorage.getItem("selected_barcode_printer") || ""
-            : "");
+        // Barcode Label dimensions (DCode DC421 Pro TSPL)
         const loadedW = activeStore.label_width_mm || 50;
         const loadedH = activeStore.label_height_mm || 25;
         const loadedCols = activeStore.label_columns || 2;
@@ -156,7 +166,6 @@ export const SettingsPage: React.FC = () => {
         const loadedOffY = activeStore.label_offset_y_dots ?? 0;
         const loadedDup = Boolean(activeStore.label_duplicate_odd);
 
-        setBarcodePrinter(loadedBPrinter);
         setLabelWidth(loadedW);
         setLabelHeight(loadedH);
         setLabelColumns(loadedCols);
@@ -205,6 +214,14 @@ export const SettingsPage: React.FC = () => {
         return;
       }
 
+      // 1. Save hardware printer settings to this machine's LOCAL database only (never synced to Supabase)
+      await saveDevicePrinterSettings({
+        pos_printer: defaultPrinter || undefined,
+        pos_paper_width: paperWidth as 58 | 80,
+        barcode_printer: barcodePrinter || undefined,
+      });
+
+      // 2. Save store profile settings
       const res = await updateStore(store.id, {
         name: name.trim(),
         code: code.trim() || null,
@@ -226,11 +243,8 @@ export const SettingsPage: React.FC = () => {
         show_tax: showTax,
         show_return_policy: showReturnPolicy,
         mandatory_bill_note: mandatoryBillNote,
-        default_printer: defaultPrinter || null,
-        paper_width: paperWidth,
         show_barcode: showBarcode,
         receipt_footer: receiptFooter.trim() || null,
-        barcode_printer: barcodePrinter || null,
         label_width_mm: labelWidth,
         label_height_mm: labelHeight,
         label_gap_mm: labelRowGap,
@@ -888,6 +902,9 @@ export const SettingsPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
+                <div style={{ fontSize: "0.78rem", color: "#2563eb", fontWeight: 600, marginTop: "4px" }}>
+                  🖥️ Saved on this computer's local database only (will not overwrite other counters).
+                </div>
               </div>
 
               <div className="form-group" style={{ marginBottom: "14px" }}>
@@ -1068,6 +1085,9 @@ export const SettingsPage: React.FC = () => {
                       </select>
                       <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "4px" }}>
                         Select your <strong>DCode DC421 Pro</strong> (USB Windows printer).
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "#2563eb", fontWeight: 600, marginTop: "2px" }}>
+                        🖥️ Saved on this computer's local database only (will not overwrite other computers).
                       </div>
                     </div>
 

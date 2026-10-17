@@ -170,7 +170,18 @@ async function pullSettings(): Promise<void> {
 
   if (error || !data || data.length === 0) return;
 
+  const EXCLUDED_DEVICE_KEYS = new Set([
+    "default_printer",
+    "barcode_printer",
+    "paper_width",
+    "pos_printer",
+    "pos_paper_width",
+  ]);
+
   for (const s of data) {
+    if (EXCLUDED_DEVICE_KEYS.has(s.key)) {
+      continue;
+    }
     await rawExecute(
       `INSERT INTO settings (store_id, key, value, updated_ms)
        VALUES ($1, $2, $3, $4)

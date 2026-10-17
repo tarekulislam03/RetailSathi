@@ -5,6 +5,7 @@ import { generateUpiUri, generateQrMatrix } from "../utils/qrCodeGenerator";
 import { encodeCode128 } from "../utils/code128";
 import { encodeEan13 } from "../utils/ean13";
 import { formatTo12Hour } from "../utils/dateUtils";
+import { getDevicePrinterSettings } from "./deviceSettingsService";
 
 export interface PrinterDevice {
   name: string;
@@ -861,20 +862,33 @@ export async function printReceiptEscPos(
   }
 
   try {
-    const storeInfo = options?.storeInfo || (await getActiveStoreInfo());
+    const [storeInfo, availablePrinters, deviceSettings] = await Promise.all([
+      options?.storeInfo || getActiveStoreInfo(),
+      getAvailablePrinters().catch(() => []),
+      getDevicePrinterSettings(),
+    ]);
+
     const paperWidth =
       options?.paperWidth ||
-      (storeInfo.paper_width as 58 | 80) ||
-      (typeof localStorage !== "undefined" && localStorage.getItem("pos_paper_width") === "58"
-        ? 58
-        : 80);
+      deviceSettings.pos_paper_width ||
+      80;
 
-    const printerName =
-      options?.printerName ||
-      storeInfo.default_printer ||
-      (typeof localStorage !== "undefined"
-        ? localStorage.getItem("selected_pos_printer") || undefined
-        : undefined);
+    let targetPrinter = options?.printerName || deviceSettings.pos_printer;
+
+    // Verify target printer actually exists on THIS device
+    if (targetPrinter && availablePrinters.length > 0) {
+      const exists = availablePrinters.some(
+        (p) => p.name.toLowerCase() === targetPrinter!.toLowerCase()
+      );
+      if (!exists) {
+        // Fall back to system default printer on this machine
+        const sysDefault = availablePrinters.find((p) => p.is_default);
+        targetPrinter = sysDefault ? sysDefault.name : availablePrinters[0]?.name;
+      }
+    } else if (!targetPrinter && availablePrinters.length > 0) {
+      const sysDefault = availablePrinters.find((p) => p.is_default);
+      targetPrinter = sysDefault ? sysDefault.name : availablePrinters[0]?.name;
+    }
 
     const logoImage =
       options?.logoImage ||
@@ -889,7 +903,7 @@ export async function printReceiptEscPos(
 
     const result = await invoke<string>("print_raw_escpos", {
       bytes: Array.from(bytes),
-      printerName: printerName,
+      printerName: targetPrinter,
     });
 
     return {
@@ -915,15 +929,28 @@ export async function printBarcodeLabelEscPos(
   }
 
   try {
-    const storeInfo = await getActiveStoreInfo();
-    const printerName =
-      options?.printerName ||
-      storeInfo.default_printer ||
-      (typeof localStorage !== "undefined"
-        ? localStorage.getItem("selected_pos_printer") || undefined
-        : undefined);
+    const [storeInfo, availablePrinters, deviceSettings] = await Promise.all([
+      getActiveStoreInfo(),
+      getAvailablePrinters().catch(() => []),
+      getDevicePrinterSettings(),
+    ]);
 
-    const paperWidth = options?.paperWidth || (storeInfo.paper_width as 58 | 80) || 80;
+    let targetPrinter = options?.printerName || deviceSettings.pos_printer;
+
+    if (targetPrinter && availablePrinters.length > 0) {
+      const exists = availablePrinters.some(
+        (p) => p.name.toLowerCase() === targetPrinter!.toLowerCase()
+      );
+      if (!exists) {
+        const sysDefault = availablePrinters.find((p) => p.is_default);
+        targetPrinter = sysDefault ? sysDefault.name : availablePrinters[0]?.name;
+      }
+    } else if (!targetPrinter && availablePrinters.length > 0) {
+      const sysDefault = availablePrinters.find((p) => p.is_default);
+      targetPrinter = sysDefault ? sysDefault.name : availablePrinters[0]?.name;
+    }
+
+    const paperWidth = options?.paperWidth || deviceSettings.pos_paper_width || 80;
 
     const bytes = buildBarcodeLabelEscPos(item, {
       paperWidth,
@@ -932,7 +959,7 @@ export async function printBarcodeLabelEscPos(
 
     const res = await invoke<string>("print_raw_escpos", {
       bytes: Array.from(bytes),
-      printerName: printerName,
+      printerName: targetPrinter,
     });
 
     return {

@@ -1,3 +1,18 @@
+# Retail Sathi v0.2.5 - Checkout Review Modal & Local Device Printer Isolation
+
+### 🚀 Key Features & Enhancements
+- **Interactive "Checkout" Review Workflow**:
+  - Replaced immediate bill finalization with an intuitive **"Checkout"** review modal (`CheckoutInvoiceModal`).
+  - Cashiers can inspect complete customer details, item breakdowns, MRP/rates, savings, taxes, and payment splits prior to saving.
+  - Added dedicated **"Save Only"** (record transaction without physical printout) and **"Print Bill"** (record transaction and print thermal receipt) actions.
+  - Safe exit protection: Closing the modal with `✕` or `Cancel` keeps all cart items, quantities, and customer details completely intact without resetting or clearing data.
+- **Hardware Printer Isolation (Device-Specific Local Storage)**:
+  - POS thermal receipt printer, roll paper width (58mm/80mm), and barcode label printer settings are now stored strictly in each computer's local SQLite database (`device_settings`) and `localStorage`.
+  - Printer hardware settings are completely isolated and excluded from cloud synchronization with Supabase, preventing multi-terminal stores from overwriting differing hardware setups across machines.
+  - Robust printer fallback: Automatically detects available devices on the machine and falls back to system defaults if a previously configured printer is unplugged or offline, preventing print failures.
+
+---
+
 # Retail Sathi v0.2.4 - Billing Caret Lock, Cart Auto-Scroll & Last Item Highlight
 
 ### 🚀 Key Features & Enhancements
