@@ -1993,6 +1993,7 @@ html, body {
   }
 
   .thermal-receipt-paper {
+    display: block !important;
     width: 76mm !important;
     max-width: 80mm !important;
     margin: 0 auto !important;

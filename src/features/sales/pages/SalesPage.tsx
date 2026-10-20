@@ -4,6 +4,7 @@ import { fetchSaleDetails } from "../../billing/services/billingService";
 import {
   fetchSalesWithItems,
   SalesAnalytics,
+  getSalePaymentBreakdown,
 } from "../services/salesService";
 import { SalesKpiGrid } from "../components/SalesKpiGrid";
 import { SalesTable } from "../components/SalesTable";
@@ -28,6 +29,12 @@ export const SalesPage: React.FC = () => {
     totalProfit: 0,
     todayOrdersCount: 0,
     totalRevenue: 0,
+    todayCash: 0,
+    todayUpi: 0,
+    monthlyCash: 0,
+    monthlyUpi: 0,
+    totalCash: 0,
+    totalUpi: 0,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,10 +183,25 @@ export const SalesPage: React.FC = () => {
 
   const isFiltered = Boolean(searchTerm || startDate || endDate);
 
+  const filteredCashReceived = filteredSales.reduce((sum, s) => {
+    return sum + getSalePaymentBreakdown(s).cashReceived;
+  }, 0);
+
+  const filteredUpiReceived = filteredSales.reduce((sum, s) => {
+    return sum + getSalePaymentBreakdown(s).upiReceived;
+  }, 0);
+
   return (
     <>
       {/* Sales Analytics KPI Grid */}
-      <SalesKpiGrid analytics={analytics} />
+      <SalesKpiGrid
+        analytics={analytics}
+        filteredStats={{
+          isFiltered,
+          cashReceived: filteredCashReceived,
+          upiReceived: filteredUpiReceived,
+        }}
+      />
 
       {error && (
         <div className="error-banner">
@@ -195,7 +217,7 @@ export const SalesPage: React.FC = () => {
             <h2>Sales History ({filteredSales.length})</h2>
             {isFiltered && (
               <div style={{ fontSize: "0.78rem", color: "#104175", fontWeight: 600, marginTop: "2px" }}>
-                Filtered Revenue: ₹{filteredTotalRevenue.toFixed(2)} | GST Collected: ₹{filteredTotalGst.toFixed(2)}
+                Filtered Revenue: ₹{filteredTotalRevenue.toFixed(2)} | Cash: ₹{filteredCashReceived.toFixed(2)} | UPI: ₹{filteredUpiReceived.toFixed(2)} | GST Collected: ₹{filteredTotalGst.toFixed(2)}
               </div>
             )}
           </div>

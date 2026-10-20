@@ -1,3 +1,18 @@
+# Retail Sathi v0.2.6 - Inventory Reorder Sheet & Sales Payment KPIs
+
+### 🚀 Key Features & Enhancements
+- **Low Stock Reorder List & POS Thermal Printing**:
+  - Upgraded the "Manage Low Stock" feature in Inventory to an interactive **Reorder List** modal (`ReorderListModal`).
+  - Cashiers and inventory managers can select low-stock or out-of-stock products, view stock levels and reorder thresholds, and customize order quantities.
+  - Direct raw ESC/POS thermal printing with automatic roll width optimization (**80mm Standard** and **58mm Compact**) and device autodetect.
+  - Preserves exact user selection order ("first selected, printed first") and formats items with prominent product descriptions and clear order quantities.
+- **Sales Report Payment Breakdown KPIs (Cash & UPI)**:
+  - Added dedicated KPI cards to the Sales History & Analytics dashboard to track **Cash Received** and **UPI Received** separately.
+  - Accurate payment parsing across single-mode cash/UPI payments, split payments (`Cash: ₹...`, `UPI: ₹...`), credit/due sales, and direct payments.
+  - Dynamic filter synchronization: applying date presets (Today, Yesterday, This Month) or search filters immediately updates the Cash and UPI receipt cards and status banner.
+
+---
+
 # Retail Sathi v0.2.5 - Checkout Review Modal & Local Device Printer Isolation
 
 ### 🚀 Key Features & Enhancements

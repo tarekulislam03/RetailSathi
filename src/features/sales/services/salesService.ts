@@ -15,6 +15,12 @@ export interface SalesAnalytics {
   totalProfit: number;
   todayOrdersCount: number;
   totalRevenue: number;
+  todayCash: number;
+  todayUpi: number;
+  monthlyCash: number;
+  monthlyUpi: number;
+  totalCash: number;
+  totalUpi: number;
 }
 
 /**
@@ -81,6 +87,66 @@ export function getSaleDateKey(sale: Sale, fallbackDate: Date = new Date()): { d
     year: "numeric",
   });
   return { dateKey, dateLabel };
+}
+
+/**
+ * Calculates payment received over Cash and UPI separately for a given sale.
+ * Supports single payment modes, explicit due amounts, split payments, and direct paid fields.
+ */
+export function getSalePaymentBreakdown(sale: Sale): { cashReceived: number; upiReceived: number } {
+  const mode = (sale.payment_mode || "Cash").trim();
+
+  // 1. Check if explicit Cash: and UPI: breakdown exists in payment_mode string
+  const cashMatch = mode.match(/Cash:\s*₹?\s*([\d.]+)/i);
+  const upiMatch = mode.match(/UPI:\s*₹?\s*([\d.]+)/i);
+
+  if (cashMatch || upiMatch) {
+    const cash = cashMatch ? parseFloat(cashMatch[1]) || 0 : (sale.cash_paid || 0);
+    const upi = upiMatch ? parseFloat(upiMatch[1]) || 0 : (sale.upi_paid || 0);
+    return { cashReceived: cash, upiReceived: upi };
+  }
+
+  // 2. Check if explicit numeric cash_paid and upi_paid fields exist on sale object
+  if (
+    sale.cash_paid !== undefined &&
+    sale.upi_paid !== undefined &&
+    (sale.cash_paid > 0 || sale.upi_paid > 0)
+  ) {
+    return { cashReceived: sale.cash_paid || 0, upiReceived: sale.upi_paid || 0 };
+  }
+
+  // 3. Due amount check
+  const dueMatch = mode.match(/Due:\s*₹?\s*([\d.]+)/i);
+  const dueAmt = dueMatch ? parseFloat(dueMatch[1]) || 0 : (sale.due_amount || 0);
+
+  // 4. Pure Due / Credit sale
+  if (/^due$|^credit$/i.test(mode)) {
+    return { cashReceived: sale.cash_paid || 0, upiReceived: sale.upi_paid || 0 };
+  }
+
+  // 5. Cash payment
+  if (/cash/i.test(mode)) {
+    const paid =
+      sale.cash_paid !== undefined && sale.cash_paid > 0
+        ? sale.cash_paid
+        : Math.max(0, sale.grand_total - dueAmt);
+    return { cashReceived: paid, upiReceived: 0 };
+  }
+
+  // 6. UPI payment (UPI, Online, QR, GPay, Paytm, PhonePe, etc.)
+  if (/upi|online|qr|gpay|paytm|phonepe/i.test(mode)) {
+    const paid =
+      sale.upi_paid !== undefined && sale.upi_paid > 0
+        ? sale.upi_paid
+        : Math.max(0, sale.grand_total - dueAmt);
+    return { cashReceived: 0, upiReceived: paid };
+  }
+
+  // 7. Fallback
+  return {
+    cashReceived: sale.cash_paid || 0,
+    upiReceived: sale.upi_paid || 0,
+  };
 }
 
 export async function fetchSalesWithItems(): Promise<{
@@ -152,12 +218,22 @@ export async function fetchSalesWithItems(): Promise<{
   let totalProfit = 0;
   let totalRevenue = 0;
   let todayOrdersCount = 0;
+  let todayCash = 0;
+  let todayUpi = 0;
+  let monthlyCash = 0;
+  let monthlyUpi = 0;
+  let totalCash = 0;
+  let totalUpi = 0;
 
   for (const sale of sales) {
     sale.items = (sale.invoice_no && itemsByInvoiceMap[sale.invoice_no]) || itemsMap[sale.id] || [];
     totalRevenue += sale.grand_total;
     const saleTax = sale.tax_amount || 0;
     totalGst += saleTax;
+
+    const { cashReceived, upiReceived } = getSalePaymentBreakdown(sale);
+    totalCash += cashReceived;
+    totalUpi += upiReceived;
 
     // Date parsing
     const saleDate = parseSaleDate(sale.created_at, sale.invoice_no);
@@ -187,6 +263,8 @@ export async function fetchSalesWithItems(): Promise<{
       todaySales += sale.grand_total;
       todayGst += saleTax;
       todayOrdersCount += 1;
+      todayCash += cashReceived;
+      todayUpi += upiReceived;
     }
 
     // Profit Calculation synchronized with Manage Sales & Profit report
@@ -197,6 +275,8 @@ export async function fetchSalesWithItems(): Promise<{
       monthlySales += sale.grand_total;
       monthlyGst += saleTax;
       monthlyProfit += saleProfit;
+      monthlyCash += cashReceived;
+      monthlyUpi += upiReceived;
     }
   }
 
@@ -212,6 +292,12 @@ export async function fetchSalesWithItems(): Promise<{
       totalProfit,
       todayOrdersCount,
       totalRevenue,
+      todayCash,
+      todayUpi,
+      monthlyCash,
+      monthlyUpi,
+      totalCash,
+      totalUpi,
     },
   };
 }

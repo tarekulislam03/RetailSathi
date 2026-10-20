@@ -27,7 +27,12 @@ import {
   updateSupplier,
   deleteSupplier,
 } from "../features/purchases/services/supplierService";
-import { fetchSalesWithItems, calculateSaleProfit, getSaleDateKey } from "../features/sales/services/salesService";
+import {
+  fetchSalesWithItems,
+  calculateSaleProfit,
+  getSaleDateKey,
+  getSalePaymentBreakdown,
+} from "../features/sales/services/salesService";
 import {
   fetchCustomers,
   createCustomer,
@@ -681,12 +686,35 @@ describe("Retail Sathi Backend Logic Tests", () => {
       expect(sales.length).toBe(1);
       expect(analytics.todayOrdersCount).toBe(1);
       expect(analytics.todaySales).toBe(160); // 80 * 2
+      expect(analytics.todayCash).toBe(160);
+      expect(analytics.todayUpi).toBe(0);
+      expect(analytics.monthlyCash).toBe(160);
+      expect(analytics.monthlyUpi).toBe(0);
       expect(analytics.monthlyProfit).toBe(60); // (80 - 50) * 2
       expect(analytics.totalProfit).toBe(60);  // (80 - 50) * 2
       expect(calculateSaleProfit(sales[0])).toBe(analytics.monthlyProfit);
       const { dateKey, dateLabel } = getSaleDateKey(sales[0]);
       expect(dateKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(dateLabel.length).toBeGreaterThan(0);
+
+      // Verify payment breakdown helper
+      expect(getSalePaymentBreakdown({ ...sales[0], payment_mode: "Cash" })).toEqual({
+        cashReceived: 160,
+        upiReceived: 0,
+      });
+      expect(getSalePaymentBreakdown({ ...sales[0], payment_mode: "UPI" })).toEqual({
+        cashReceived: 0,
+        upiReceived: 160,
+      });
+      expect(
+        getSalePaymentBreakdown({
+          ...sales[0],
+          payment_mode: "Split (Cash: ₹60.00, UPI: ₹100.00)",
+        })
+      ).toEqual({
+        cashReceived: 60,
+        upiReceived: 100,
+      });
 
       console.log("sales analytics test passed!");
     });
