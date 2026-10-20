@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildReceiptEscPos, createReceiptCanvas } from "../services/escposService";
+import {
+  buildReceiptEscPos,
+  createReceiptCanvas,
+  createReorderListCanvas,
+  buildReorderListEscPos,
+  ReorderItem,
+} from "../services/escposService";
 import { Sale } from "../features/billing/types";
 import { generateCode128Svg, encodeCode128 } from "../utils/code128";
 import {
@@ -250,3 +256,81 @@ describe("Dynamic UPI QR Code Generator Tests", () => {
     expect(svg).toContain("</svg>");
   });
 });
+
+describe("Reorder List Generator Tests", () => {
+  const mockReorderItems: ReorderItem[] = [
+    {
+      id: 1,
+      name: "Parle-G Gold Biscuits 250g",
+      barcode: "8901234567890",
+      category: "Biscuits",
+      stock: 2,
+      reorder_threshold: 15,
+      reorder_quantity: 13,
+      price: 30,
+    },
+    {
+      id: 2,
+      name: "Tata Salt 1kg Iodized",
+      barcode: "8901234567891",
+      category: "Groceries",
+      stock: 0,
+      reorder_threshold: 20,
+      reorder_quantity: 20,
+      price: 25,
+    },
+  ];
+
+  it("should create reorder list canvas for 80mm with width 576", () => {
+    const canvas = createReorderListCanvas(mockReorderItems, {
+      paperWidth: 80,
+      storeName: "Test Store",
+    });
+    expect(canvas.width).toBe(576);
+    expect(canvas.height).toBeGreaterThan(300);
+  });
+
+  it("should create reorder list canvas for 58mm with width 384", () => {
+    const canvas = createReorderListCanvas(mockReorderItems, {
+      paperWidth: 58,
+      storeName: "Test Store",
+    });
+    expect(canvas.width).toBe(384);
+    expect(canvas.height).toBeGreaterThan(300);
+  });
+
+  it("should build valid ESC/POS raster byte stream for reorder list", () => {
+    const bytes = buildReorderListEscPos(mockReorderItems, {
+      paperWidth: 80,
+      storeName: "Supermarket Test",
+    });
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.length).toBeGreaterThan(100);
+
+    // ESC @ initialize
+    expect(bytes[0]).toBe(0x1b);
+    expect(bytes[1]).toBe(0x40);
+
+    // Raster GS v 0
+    const arr = Array.from(bytes);
+    let foundGsV0 = false;
+    for (let i = 0; i < arr.length - 4; i++) {
+      if (
+        arr[i] === 0x1d &&
+        arr[i + 1] === 0x76 &&
+        arr[i + 2] === 0x30 &&
+        arr[i + 3] === 0x00
+      ) {
+        foundGsV0 = true;
+        break;
+      }
+    }
+    expect(foundGsV0).toBe(true);
+
+    // Ends with cut command (GS V -> 0x1D, 0x56)
+    const endSlice = Array.from(bytes.slice(bytes.length - 10));
+    expect(endSlice).toContain(0x1d);
+    expect(endSlice).toContain(0x56);
+  });
+});
+

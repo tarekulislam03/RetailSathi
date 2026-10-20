@@ -974,3 +974,330 @@ export async function printBarcodeLabelEscPos(
     };
   }
 }
+
+export interface ReorderItem {
+  id: number;
+  name: string;
+  barcode?: string;
+  category?: string;
+  stock: number;
+  reorder_threshold: number;
+  reorder_quantity: number;
+  price?: number;
+  mrp?: number;
+}
+
+export interface PrintReorderListOptions {
+  printerName?: string;
+  paperWidth?: 58 | 80;
+  storeName?: string;
+}
+
+/**
+ * Render low stock reorder list onto HTML Canvas tailored for 58mm or 80mm thermal POS printers.
+ */
+export function createReorderListCanvas(
+  items: ReorderItem[],
+  options?: PrintReorderListOptions
+): HTMLCanvasElement {
+  const paperWidth = options?.paperWidth || 80;
+  const canvasWidth = paperWidth === 58 ? 384 : 576;
+  const is58 = paperWidth === 58;
+  const storeName = options?.storeName || "RETAIL SATHI";
+
+  const totalUnits = items.reduce((acc, it) => acc + (it.reorder_quantity || 1), 0);
+  const estimatedHeight = 600 + items.length * (is58 ? 100 : 85);
+
+  let canvas: HTMLCanvasElement;
+  if (typeof document !== "undefined" && document.createElement) {
+    canvas = document.createElement("canvas");
+  } else {
+    canvas = {
+      width: canvasWidth,
+      height: estimatedHeight,
+      getContext: () => null,
+    } as any;
+    return canvas;
+  }
+
+  canvas.width = canvasWidth;
+  canvas.height = Math.max(500, estimatedHeight);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#000000";
+  ctx.strokeStyle = "#000000";
+
+  let y = 30;
+  const margin = 12;
+
+  const drawDashedLine = (currY: number) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.moveTo(margin, currY);
+    ctx.lineTo(canvasWidth - margin, currY);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const drawSolidLine = (currY: number, width = 1.5) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.lineWidth = width;
+    ctx.moveTo(margin, currY);
+    ctx.lineTo(canvasWidth - margin, currY);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  const drawCenteredText = (text: string, font: string, currY: number): number => {
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(text, canvasWidth / 2, currY);
+    ctx.restore();
+    const fontSize = parseInt(font.match(/\d+/)?.[0] || "20", 10);
+    return currY + fontSize + 6;
+  };
+
+  const drawTwoColumnText = (left: string, right: string, font: string, currY: number): number => {
+    ctx.save();
+    ctx.font = font;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText(left, margin, currY);
+    ctx.textAlign = "right";
+    ctx.fillText(right, canvasWidth - margin, currY);
+    ctx.restore();
+    const fontSize = parseInt(font.match(/\d+/)?.[0] || "18", 10);
+    return currY + fontSize + 6;
+  };
+
+  // 1. STORE HEADER
+  y = drawCenteredText(storeName, is58 ? "bold 22px sans-serif" : "bold 28px sans-serif", y);
+  y = drawCenteredText("*** INVENTORY REORDER LIST ***", is58 ? "bold 17px sans-serif" : "bold 20px sans-serif", y);
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  y = drawTwoColumnText("Date & Time:", `${dateStr} ${timeStr}`, is58 ? "15px sans-serif" : "18px sans-serif", y);
+
+  y += 4;
+  drawDashedLine(y);
+  y += 12;
+
+  // 2. TABLE COLUMN HEADERS
+  ctx.save();
+  ctx.font = is58 ? "bold 18px sans-serif" : "bold 22px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("# Item Description", margin, y);
+  ctx.textAlign = "right";
+  ctx.fillText("Order Qty", canvasWidth - margin, y);
+  ctx.restore();
+
+  y += is58 ? 22 : 26;
+  drawSolidLine(y, 2);
+  y += 14;
+
+  // 3. ITEMS LIST (Large item name and order qty, no barcode/category/stock/min)
+  items.forEach((item, idx) => {
+    const itemNumber = `${idx + 1}. `;
+    const fullName = `${itemNumber}${item.name}`;
+    const qtyText = String(item.reorder_quantity);
+
+    ctx.save();
+    const nameFont = is58 ? "bold 18px sans-serif" : "bold 23px sans-serif";
+    const qtyFont = is58 ? "bold 21px sans-serif" : "bold 26px sans-serif";
+
+    ctx.font = qtyFont;
+    const qtyWidth = ctx.measureText(qtyText).width;
+
+    ctx.font = nameFont;
+    ctx.textAlign = "left";
+    const maxNameWidth = canvasWidth - margin * 2 - qtyWidth - 16;
+
+    if (ctx.measureText(fullName).width <= maxNameWidth) {
+      ctx.fillText(fullName, margin, y);
+      ctx.font = qtyFont;
+      ctx.textAlign = "right";
+      ctx.fillText(qtyText, canvasWidth - margin, y);
+      y += is58 ? 28 : 34;
+    } else {
+      const words = fullName.split(/\s+/);
+      let line1 = "";
+      let line2 = "";
+      for (const w of words) {
+        if (!line2 && ctx.measureText(`${line1} ${w}`.trim()).width <= maxNameWidth) {
+          line1 = `${line1} ${w}`.trim();
+        } else {
+          line2 = `${line2} ${w}`.trim();
+        }
+      }
+      ctx.fillText(line1, margin, y);
+      ctx.font = qtyFont;
+      ctx.textAlign = "right";
+      ctx.fillText(qtyText, canvasWidth - margin, y);
+      y += is58 ? 26 : 32;
+
+      if (line2) {
+        ctx.font = nameFont;
+        ctx.textAlign = "left";
+        ctx.fillText(line2, margin + (is58 ? 16 : 22), y);
+        y += is58 ? 26 : 32;
+      }
+    }
+    ctx.restore();
+
+    // Dotted separator between items
+    ctx.save();
+    ctx.setLineDash([2, 4]);
+    ctx.strokeStyle = "#888888";
+    ctx.beginPath();
+    ctx.moveTo(margin, y);
+    ctx.lineTo(canvasWidth - margin, y);
+    ctx.stroke();
+    ctx.restore();
+    y += 10;
+  });
+
+  // 4. FOOTER SUMMARY (Keeps total items and total reorder units)
+  y += 6;
+  drawSolidLine(y, 2);
+  y += 14;
+
+  y = drawTwoColumnText("TOTAL ITEMS:", String(items.length), is58 ? "bold 18px sans-serif" : "bold 22px sans-serif", y);
+  y = drawTwoColumnText("TOTAL REORDER UNITS:", String(totalUnits), is58 ? "bold 20px sans-serif" : "bold 24px sans-serif", y);
+
+  y += 10;
+  drawDashedLine(y);
+  y += 18;
+
+  // Space for physical notes / supplier signature
+  ctx.save();
+  ctx.font = is58 ? "13px sans-serif" : "15px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Supplier / Vendor:  ______________________", margin, y);
+  y += 24;
+  ctx.fillText("Order Authorized:  ______________________", margin, y);
+  y += 26;
+  ctx.restore();
+
+  drawDashedLine(y);
+  y += 14;
+
+  y = drawCenteredText("Retail Sathi • Inventory Management", is58 ? "14px sans-serif" : "16px sans-serif", y);
+  y += 26;
+
+  // Trim canvas to content height
+  const finalHeight = Math.ceil(y);
+  if (typeof document !== "undefined" && document.createElement) {
+    const trimmedCanvas = document.createElement("canvas");
+    trimmedCanvas.width = canvasWidth;
+    trimmedCanvas.height = finalHeight;
+    const trimmedCtx = trimmedCanvas.getContext("2d");
+    if (trimmedCtx) {
+      trimmedCtx.drawImage(canvas, 0, 0);
+      return trimmedCanvas;
+    }
+  }
+
+  return canvas;
+}
+
+/**
+ * Generate reorder list ESC/POS raster byte payload.
+ */
+export function buildReorderListEscPos(
+  items: ReorderItem[],
+  options?: PrintReorderListOptions
+): Uint8Array {
+  const canvas = createReorderListCanvas(items, options);
+  return canvasToEscPosRaster(canvas, { kickDrawer: false });
+}
+
+/**
+ * Print low stock reorder list to connected POS thermal receipt printer.
+ */
+export async function printReorderListEscPos(
+  items: ReorderItem[],
+  options?: PrintReorderListOptions
+): Promise<{ success: boolean; message: string }> {
+  if (!items || items.length === 0) {
+    return { success: false, message: "No items selected to print." };
+  }
+
+  if (!isTauri()) {
+    if (typeof window !== "undefined") {
+      window.print();
+      return { success: true, message: "Browser print dialog opened." };
+    }
+    return { success: false, message: "Desktop app required to print to POS printer." };
+  }
+
+  try {
+    const [storeInfo, availablePrinters, deviceSettings] = await Promise.all([
+      getActiveStoreInfo(),
+      getAvailablePrinters().catch(() => []),
+      getDevicePrinterSettings(),
+    ]);
+
+    let targetPrinter = options?.printerName || deviceSettings.pos_printer;
+
+    if (targetPrinter && availablePrinters.length > 0) {
+      const exists = availablePrinters.some(
+        (p) => p.name.toLowerCase() === targetPrinter!.toLowerCase()
+      );
+      if (!exists) {
+        const sysDefault = availablePrinters.find((p) => p.is_default);
+        targetPrinter = sysDefault ? sysDefault.name : availablePrinters[0]?.name;
+      }
+    } else if (!targetPrinter && availablePrinters.length > 0) {
+      const sysDefault = availablePrinters.find((p) => p.is_default);
+      targetPrinter = sysDefault ? sysDefault.name : availablePrinters[0]?.name;
+    }
+
+    const paperWidth =
+      options?.paperWidth ||
+      deviceSettings.pos_paper_width ||
+      (storeInfo.paper_width as 58 | 80) ||
+      80;
+
+    const bytes = buildReorderListEscPos(items, {
+      ...options,
+      paperWidth,
+      storeName: options?.storeName || storeInfo.name,
+    });
+
+    const res = await invoke<string>("print_raw_escpos", {
+      bytes: Array.from(bytes),
+      printerName: targetPrinter,
+    });
+
+    return {
+      success: true,
+      message:
+        res ||
+        `Reorder list (${items.length} items, ${paperWidth}mm) printed to ${targetPrinter || "printer"}.`,
+    };
+  } catch (err: any) {
+    console.error("[Reorder-Print] Error:", err);
+    return {
+      success: false,
+      message: err?.message || String(err),
+    };
+  }
+}

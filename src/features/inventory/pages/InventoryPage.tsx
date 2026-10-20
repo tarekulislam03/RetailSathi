@@ -140,8 +140,9 @@ export const InventoryPage: React.FC = () => {
                 gap: "6px",
               }}
               onClick={() => setIsLowStockModalOpen(true)}
+              title="Open Reorder List for low stock items"
             >
-              Manage Low Stocks
+              Manage Low Stock
               {lowStockCount > 0 && (
                 <span
                   style={{
