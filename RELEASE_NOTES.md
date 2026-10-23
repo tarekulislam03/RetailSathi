@@ -1,3 +1,22 @@
+# Retail Sathi v0.2.7 - Customer Loyalty Points, Lucky Draw Tracker & Uppercase Normalization
+
+### 🚀 Key Features & Enhancements
+- **Updated Loyalty Points Formula (1 pt per ₹100)**:
+  - Adjusted loyalty point accrual to **1 point for every ₹100 spent** across all sales.
+  - Automatically recalculates and updates existing customer points retroactively based on their purchase history.
+- **Active Points & Lifetime Points Architecture**:
+  - Re-labeled total cumulative points as **Lifetime Points**.
+  - Added **Active Points** tracking (`points % 10`) that resets every 10 points.
+- **Interactive Lucky Draw Management**:
+  - Added **Eligible Lucky Draw** counter granting 1 draw entry every time 10 points are accumulated.
+  - Added interactive **Lucky Draw Used** controls in the Customer Directory with real-time `+` / `-` adjustments.
+  - Automatically reconciles remaining eligible draws as `floor(Lifetime Points / 10) - Used Draws`.
+- **Customer Name Uppercase Normalization**:
+  - All customer names are now permanently normalized to **UPPERCASE** upon creation, editing, and POS billing.
+  - Added startup migration to automatically convert all legacy customer records to uppercase.
+
+---
+
 # Retail Sathi v0.2.6 - Inventory Reorder Sheet & Sales Payment KPIs
 
 ### 🚀 Key Features & Enhancements
