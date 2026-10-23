@@ -9,6 +9,7 @@ interface CustomerTableProps {
   onDelete: (id: number) => void;
   onSettleDues?: (customer: Customer) => void;
   onViewPurchases?: (customer: Customer) => void;
+  onUpdateLuckyDrawUsed?: (customer: Customer, newUsedCount: number) => void;
 }
 
 export const CustomerTable: React.FC<CustomerTableProps> = ({
@@ -18,6 +19,7 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
   onDelete,
   onSettleDues,
   onViewPurchases,
+  onUpdateLuckyDrawUsed,
 }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -54,7 +56,10 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
               <th>CUSTOMER NAME</th>
               <th>PHONE NO</th>
               <th>ADDRESS</th>
-              <th>LOYALTY POINTS</th>
+              <th>ACTIVE POINTS</th>
+              <th>LUCKY DRAW USED</th>
+              <th>ELIGIBLE LUCKY DRAW</th>
+              <th>LIFETIME POINTS</th>
               <th>DUES (₹)</th>
               <th style={{ width: "240px", textAlign: "center" }}>ACTIONS</th>
             </tr>
@@ -68,6 +73,88 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                   <span className="barcode-tag">{c.phone}</span>
                 </td>
                 <td>{c.address || "—"}</td>
+                <td>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: c.active_points > 0 ? "#16a34a" : "#666",
+                    }}
+                  >
+                    {c.active_points} pts
+                  </span>
+                </td>
+                <td>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <button
+                      type="button"
+                      disabled={c.lucky_draw_used <= 0}
+                      onClick={() =>
+                        onUpdateLuckyDrawUsed &&
+                        onUpdateLuckyDrawUsed(c, Math.max(0, c.lucky_draw_used - 1))
+                      }
+                      title="Decrease used draws"
+                      style={{
+                        padding: "2px 7px",
+                        fontSize: "0.85rem",
+                        fontWeight: "bold",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "4px",
+                        backgroundColor: c.lucky_draw_used > 0 ? "#f9fafb" : "#f3f4f6",
+                        color: c.lucky_draw_used > 0 ? "#111827" : "#9ca3af",
+                        cursor: c.lucky_draw_used > 0 ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      -
+                    </button>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        minWidth: "24px",
+                        textAlign: "center",
+                        color: c.lucky_draw_used > 0 ? "#4338ca" : "#666",
+                      }}
+                    >
+                      {c.lucky_draw_used}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={c.lucky_draw_count <= 0}
+                      onClick={() =>
+                        onUpdateLuckyDrawUsed &&
+                        onUpdateLuckyDrawUsed(c, c.lucky_draw_used + 1)
+                      }
+                      title={c.lucky_draw_count > 0 ? "Mark 1 draw as used" : "No eligible draws left to use"}
+                      style={{
+                        padding: "2px 7px",
+                        fontSize: "0.85rem",
+                        fontWeight: "bold",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "4px",
+                        backgroundColor: c.lucky_draw_count > 0 ? "#e0e7ff" : "#f3f4f6",
+                        color: c.lucky_draw_count > 0 ? "#3730a3" : "#9ca3af",
+                        cursor: c.lucky_draw_count > 0 ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      color: c.lucky_draw_count > 0 ? "#d97706" : "#666",
+                      backgroundColor: c.lucky_draw_count > 0 ? "#fef3c7" : "#f3f4f6",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      border: c.lucky_draw_count > 0 ? "1px solid #fde68a" : "1px solid #e5e7eb",
+                      display: "inline-block",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    🎟️ {c.lucky_draw_count} {c.lucky_draw_count === 1 ? "Draw" : "Draws"}
+                  </span>
+                </td>
                 <td>
                   <span
                     style={{

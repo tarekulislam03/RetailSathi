@@ -39,6 +39,7 @@ import {
   updateCustomer,
   deleteCustomer,
   settleCustomerDues,
+  updateCustomerLuckyDrawUsed,
   getCustomerStats,
   fetchCustomerSales,
   fetchSaleItems,
@@ -916,7 +917,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       let customers = await fetchCustomers();
       expect(customers.length).toBe(1);
-      expect(customers[0].name).toBe("Amit Patel");
+      expect(customers[0].name).toBe("AMIT PATEL");
       expect(customers[0].phone).toBe("9876543210");
       expect(customers[0].address).toBe("123 Park Street, Kolkata");
       expect(customers[0].loyalty_points).toBe(0);
@@ -986,9 +987,12 @@ describe("Retail Sathi Backend Logic Tests", () => {
       const customers = await fetchCustomers();
       expect(customers.length).toBe(1);
       const rahul = customers[0];
-      expect(rahul.name).toBe("Rahul Sharma");
+      expect(rahul.name).toBe("RAHUL SHARMA");
       expect(rahul.total_spent).toBe(1000);
-      expect(rahul.loyalty_points).toBe(100); // ₹1000 purchase = 100 pts
+      expect(rahul.loyalty_points).toBe(10); // ₹1000 purchase = 10 lifetime pts
+      expect(rahul.active_points).toBe(0); // Resets at multiples of 10
+      expect(rahul.lucky_draw_used).toBe(0);
+      expect(rahul.lucky_draw_count).toBe(1); // 10 pts / 10 = 1 lucky draw entry
       expect(rahul.dues).toBe(1000); // Recorded dues from Credit/Due sale
       expect(rahul.purchase_item_name).toBe("Premium Rice 10kg");
 
@@ -1004,7 +1008,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       const stats = await getCustomerStats();
       expect(stats.totalCustomers).toBe(1);
-      expect(stats.totalLoyaltyPoints).toBe(100);
+      expect(stats.totalLoyaltyPoints).toBe(10);
       expect(stats.totalDues).toBe(1000);
 
       // 4. Test auto-creation of a BRAND NEW customer during POS sale checkout
@@ -1027,23 +1031,33 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       const updatedCustomers = await fetchCustomers();
       expect(updatedCustomers.length).toBe(2);
-      const sneha = updatedCustomers.find((c) => c.name === "Sneha Kapur");
+      const sneha = updatedCustomers.find((c) => c.name === "SNEHA KAPUR");
       expect(sneha).not.toBeUndefined();
       expect(sneha?.phone).toBe("9988776655");
       expect(sneha?.dues).toBe(500);
-      expect(sneha?.loyalty_points).toBe(50); // ₹500 purchase = 50 points
+      expect(sneha?.loyalty_points).toBe(5); // ₹500 purchase = 5 points
+      expect(sneha?.active_points).toBe(5); // 5 points active
+      expect(sneha?.lucky_draw_used).toBe(0);
+      expect(sneha?.lucky_draw_count).toBe(0); // Not yet eligible (requires 10 points)
 
       // 5. Test partial dues settlement (Clear ₹200 out of ₹500 dues for Sneha)
       await settleCustomerDues(sneha!.id, 200);
       let refreshedCustomers = await fetchCustomers();
-      let snehaRefreshed = refreshedCustomers.find((c) => c.name === "Sneha Kapur");
+      let snehaRefreshed = refreshedCustomers.find((c) => c.name === "SNEHA KAPUR");
       expect(snehaRefreshed?.dues).toBe(300);
 
       // 6. Test full dues settlement (Clear remaining dues)
       await settleCustomerDues(sneha!.id);
       refreshedCustomers = await fetchCustomers();
-      snehaRefreshed = refreshedCustomers.find((c) => c.name === "Sneha Kapur");
+      snehaRefreshed = refreshedCustomers.find((c) => c.name === "SNEHA KAPUR");
       expect(snehaRefreshed?.dues).toBe(0);
+
+      // 7. Test lucky draw usage management
+      await updateCustomerLuckyDrawUsed(rahul.id, 1);
+      refreshedCustomers = await fetchCustomers();
+      const rahulRefreshed = refreshedCustomers.find((c) => c.id === rahul.id);
+      expect(rahulRefreshed?.lucky_draw_used).toBe(1);
+      expect(rahulRefreshed?.lucky_draw_count).toBe(0); // 1 earned - 1 used = 0 eligible
 
       console.log("customer loyalty points and dues calculation test passed!");
     });

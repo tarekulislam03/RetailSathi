@@ -6,6 +6,7 @@ import {
   updateCustomer,
   deleteCustomer,
   settleCustomerDues,
+  updateCustomerLuckyDrawUsed,
 } from "../services/customerService";
 import { CustomerTable } from "../components/CustomerTable";
 import { CustomerModal } from "../components/CustomerModal";
@@ -128,6 +129,16 @@ export const CustomersPage: React.FC = () => {
     }
   }
 
+  async function handleUpdateLuckyDrawUsed(customer: Customer, newUsedCount: number) {
+    try {
+      await updateCustomerLuckyDrawUsed(customer.id, newUsedCount);
+      showToast(`Updated used lucky draws to ${newUsedCount} for "${customer.name}".`);
+      await loadData(true);
+    } catch (err: any) {
+      setError(err?.message || "Failed to update lucky draw used count.");
+    }
+  }
+
   const filteredCustomers = customers.filter(
     (c) =>
       c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -207,6 +218,7 @@ export const CustomersPage: React.FC = () => {
             onDelete={handleDeleteCustomer}
             onSettleDues={handleOpenClearDues}
             onViewPurchases={handleOpenPurchases}
+            onUpdateLuckyDrawUsed={handleUpdateLuckyDrawUsed}
           />
         )}
       </section>

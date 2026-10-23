@@ -106,9 +106,10 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
             <input
               id="custName"
               type="text"
-              placeholder="e.g. Ramesh Kumar"
+              placeholder="e.g. RAMESH KUMAR"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
+              style={{ textTransform: "uppercase" }}
               autoFocus
               required
             />

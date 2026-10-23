@@ -4,13 +4,11 @@ import { Sale, SaleItem } from "../../billing/types";
 
 /**
  * Calculates customer loyalty points based on total purchase amount.
- * Formula: 1 point for every ₹10 spent (e.g. ₹250 spent = 25 points).
- * Minimum 1 point for any valid purchase > ₹0.
+ * Formula: 1 point for every ₹100 spent (e.g. ₹250 spent = 2 points).
  */
 export function calculateLoyaltyPoints(totalSpent: number): number {
   if (totalSpent <= 0) return 0;
-  const pts = Math.floor(totalSpent / 10);
-  return Math.max(1, pts);
+  return Math.floor(totalSpent / 100);
 }
 
 export async function fetchCustomers(): Promise<Customer[]> {
@@ -25,6 +23,7 @@ export async function fetchCustomers(): Promise<Customer[]> {
       c.address, 
       c.purchase_item_id, 
       c.loyalty_points, 
+      COALESCE(c.lucky_draw_used, 0) AS lucky_draw_used,
       c.dues, 
       c.created_at,
       p.name AS purchase_item_name
@@ -74,7 +73,9 @@ export async function fetchCustomers(): Promise<Customer[]> {
     }
   }
 
-  return rows.map((r) => {
+  const staleUpdates: { id: number; points: number }[] = [];
+
+  const result = rows.map((r) => {
     const phone = (r.phone || "").trim();
     const nameKey = (r.name || "").trim().toLowerCase();
 
@@ -84,16 +85,22 @@ export async function fetchCustomers(): Promise<Customer[]> {
       spent: 0,
     };
 
-    // Calculate loyalty points from total purchase amount, fallback to stored row points
-    const computedLoyaltyPoints = calculateLoyaltyPoints(summary.spent);
-    const finalLoyaltyPoints = Math.max(
-      computedLoyaltyPoints,
-      Number(r.loyalty_points) || 0
-    );
+    // Calculate loyalty points from total purchase amount (always reflects the current
+    // formula); fall back to stored row points only when the customer has no sales.
+    const storedLoyaltyPoints = Number(r.loyalty_points) || 0;
+    const finalLoyaltyPoints =
+      summary.count > 0 ? calculateLoyaltyPoints(summary.spent) : storedLoyaltyPoints;
+    if (finalLoyaltyPoints !== storedLoyaltyPoints) {
+      staleUpdates.push({ id: r.id, points: finalLoyaltyPoints });
+    }
+
+    const luckyDrawUsed = Math.max(0, Number(r.lucky_draw_used) || 0);
+    const totalDrawsEarned = Math.floor(finalLoyaltyPoints / 10);
+    const eligibleLuckyDraws = Math.max(0, totalDrawsEarned - luckyDrawUsed);
 
     return {
       id: r.id,
-      name: r.name || "",
+      name: (r.name || "").toUpperCase(),
       phone: r.phone || "",
       address: r.address || "",
       purchase_item_id: r.purchase_item_id ?? null,
@@ -101,10 +108,33 @@ export async function fetchCustomers(): Promise<Customer[]> {
       total_purchases_count: summary.count,
       total_spent: summary.spent,
       loyalty_points: finalLoyaltyPoints,
+      active_points: finalLoyaltyPoints % 10,
+      lucky_draw_used: luckyDrawUsed,
+      lucky_draw_count: eligibleLuckyDraws,
       dues: Number(r.dues) || 0,
       created_at: r.created_at,
     };
   });
+
+  // Persist recalculated points and uppercase names so previously stored values match
+  for (const u of staleUpdates) {
+    try {
+      await db.execute("UPDATE customers SET loyalty_points = $1 WHERE id = $2", [
+        u.points,
+        u.id,
+      ]);
+    } catch (err) {
+      console.error("Failed to sync loyalty points:", err);
+    }
+  }
+
+  try {
+    await db.execute("UPDATE customers SET name = UPPER(name) WHERE name IS NOT NULL AND name != UPPER(name)");
+  } catch (err) {
+    // ignore
+  }
+
+  return result;
 }
 
 export async function fetchCustomerById(id: number): Promise<Customer | null> {
@@ -114,11 +144,12 @@ export async function fetchCustomerById(id: number): Promise<Customer | null> {
 
 export async function createCustomer(input: CustomerInput): Promise<number> {
   const db = await getDb();
+  const normalizedName = input.name.trim().toUpperCase();
   const result = await db.execute(
     `INSERT INTO customers (name, phone, address, purchase_item_id, loyalty_points, dues)
      VALUES ($1, $2, $3, NULL, 0, 0)`,
     [
-      input.name.trim(),
+      normalizedName,
       input.phone.trim(),
       (input.address || "").trim(),
     ]
@@ -131,12 +162,13 @@ export async function updateCustomer(
   input: CustomerInput
 ): Promise<void> {
   const db = await getDb();
+  const normalizedName = input.name.trim().toUpperCase();
   await db.execute(
     `UPDATE customers
      SET name = $1, phone = $2, address = $3
      WHERE id = $4`,
     [
-      input.name.trim(),
+      normalizedName,
       input.phone.trim(),
       (input.address || "").trim(),
       id,
@@ -147,6 +179,21 @@ export async function updateCustomer(
 export async function deleteCustomer(id: number): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM customers WHERE id = $1", [id]);
+}
+
+/**
+ * Updates how many lucky draws the customer has used.
+ */
+export async function updateCustomerLuckyDrawUsed(
+  id: number,
+  usedCount: number
+): Promise<void> {
+  const db = await getDb();
+  const safeCount = Math.max(0, Math.floor(usedCount));
+  await db.execute(
+    "UPDATE customers SET lucky_draw_used = $1 WHERE id = $2",
+    [safeCount, id]
+  );
 }
 
 /**
@@ -286,7 +333,7 @@ export async function recordCustomerSale(
 
   // If customer doesn't exist, create automatically with calculated initial points and dues
   if (!customerId) {
-    const newName = name || `Customer (${phone})`;
+    const newName = (name ? name.toUpperCase() : `Customer (${phone})`).toUpperCase();
     const initialDues = addedDues;
     const insertRes = await db.execute(
       `INSERT INTO customers (name, phone, address, purchase_item_id, loyalty_points, dues)

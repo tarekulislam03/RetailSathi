@@ -167,9 +167,10 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
           placeholder="Search name or phone..."
           value={customerName}
           onChange={(e) => {
-            setCustomerName(e.target.value);
+            setCustomerName(e.target.value.toUpperCase());
             setIsDropdownOpen(true);
           }}
+          style={{ textTransform: "uppercase" }}
           onFocus={() => setIsDropdownOpen(true)}
           onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
           autoComplete="off"
@@ -196,12 +197,23 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
                   <span
                     style={{
                       fontSize: "0.78rem",
-                      color: "#0066cc",
+                      color: "#16a34a",
                       fontWeight: 600,
                     }}
                   >
-                    {c.loyalty_points} pts
+                    {c.active_points ?? (c.loyalty_points % 10)} active pts
                   </span>
+                  {(c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)) > 0 && (
+                    <span
+                      style={{
+                        fontSize: "0.76rem",
+                        color: "#d97706",
+                        fontWeight: 700,
+                      }}
+                    >
+                      🎟️ {c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)} draw
+                    </span>
+                  )}
                   {c.dues > 0 && (
                     <span
                       style={{
@@ -313,10 +325,20 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
               Selected: {selectedCustomer.name} ({selectedCustomer.phone})
             </div>
             <div style={{ color: "#4d5c6d" }}>
-              Points:{" "}
+              Active:{" "}
+              <strong style={{ color: "#16a34a" }}>
+                {selectedCustomer.active_points ?? (selectedCustomer.loyalty_points % 10)} pts
+              </strong>
+              {" | "}
+              Lifetime:{" "}
               <strong style={{ color: "#0066cc" }}>
                 {selectedCustomer.loyalty_points} pts
               </strong>
+              {(selectedCustomer.lucky_draw_count ?? Math.floor(selectedCustomer.loyalty_points / 10)) > 0 && (
+                <span style={{ marginLeft: "8px", color: "#d97706", fontWeight: 700 }}>
+                  | 🎟️ {selectedCustomer.lucky_draw_count ?? Math.floor(selectedCustomer.loyalty_points / 10)} Draw(s)
+                </span>
+              )}
               {selectedCustomer.dues > 0 && (
                 <span
                   style={{

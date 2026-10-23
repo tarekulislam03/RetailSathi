@@ -151,6 +151,7 @@ export function createMockDatabase() {
       address TEXT,
       purchase_item_id INTEGER,
       loyalty_points REAL DEFAULT 0,
+      lucky_draw_used INTEGER DEFAULT 0,
       dues REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (purchase_item_id) REFERENCES products(id) ON DELETE SET NULL
