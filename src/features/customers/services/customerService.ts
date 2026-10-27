@@ -85,11 +85,11 @@ export async function fetchCustomers(): Promise<Customer[]> {
       spent: 0,
     };
 
-    // Calculate loyalty points from total purchase amount (always reflects the current
-    // formula); fall back to stored row points only when the customer has no sales.
+    // Calculate loyalty points from total purchase amount, preserving existing stored points
     const storedLoyaltyPoints = Number(r.loyalty_points) || 0;
-    const finalLoyaltyPoints =
-      summary.count > 0 ? calculateLoyaltyPoints(summary.spent) : storedLoyaltyPoints;
+    const spentBasedPoints =
+      summary.count > 0 ? calculateLoyaltyPoints(summary.spent) : 0;
+    const finalLoyaltyPoints = Math.max(storedLoyaltyPoints, spentBasedPoints);
     if (finalLoyaltyPoints !== storedLoyaltyPoints) {
       staleUpdates.push({ id: r.id, points: finalLoyaltyPoints });
     }
@@ -145,13 +145,18 @@ export async function fetchCustomerById(id: number): Promise<Customer | null> {
 export async function createCustomer(input: CustomerInput): Promise<number> {
   const db = await getDb();
   const normalizedName = input.name.trim().toUpperCase();
+  const initialPoints = Number(input.loyalty_points) || 0;
+  const initialDues = Number(input.dues) || 0;
   const result = await db.execute(
     `INSERT INTO customers (name, phone, address, purchase_item_id, loyalty_points, dues)
-     VALUES ($1, $2, $3, NULL, 0, 0)`,
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [
       normalizedName,
       input.phone.trim(),
       (input.address || "").trim(),
+      input.purchase_item_id ?? null,
+      initialPoints,
+      initialDues,
     ]
   );
   return result.lastInsertId ?? 0;
@@ -163,17 +168,32 @@ export async function updateCustomer(
 ): Promise<void> {
   const db = await getDb();
   const normalizedName = input.name.trim().toUpperCase();
-  await db.execute(
-    `UPDATE customers
-     SET name = $1, phone = $2, address = $3
-     WHERE id = $4`,
-    [
-      normalizedName,
-      input.phone.trim(),
-      (input.address || "").trim(),
-      id,
-    ]
-  );
+  if (input.loyalty_points !== undefined) {
+    await db.execute(
+      `UPDATE customers
+       SET name = $1, phone = $2, address = $3, loyalty_points = $4
+       WHERE id = $5`,
+      [
+        normalizedName,
+        input.phone.trim(),
+        (input.address || "").trim(),
+        Number(input.loyalty_points) || 0,
+        id,
+      ]
+    );
+  } else {
+    await db.execute(
+      `UPDATE customers
+       SET name = $1, phone = $2, address = $3
+       WHERE id = $4`,
+      [
+        normalizedName,
+        input.phone.trim(),
+        (input.address || "").trim(),
+        id,
+      ]
+    );
+  }
 }
 
 export async function deleteCustomer(id: number): Promise<void> {
@@ -262,7 +282,8 @@ export async function fetchSaleItems(saleId: number): Promise<SaleItem[]> {
  * 1. Checks if customer exists by phone/name. If not, auto-registers customer.
  * 2. If paymentMode is "Due" or "Credit", adds grandTotal to customer's dues.
  * 3. Updates purchase_item_id to the last purchased product ID.
- * 4. Recalculates loyalty points based on total purchase amount.
+ * 4. Updates loyalty points (existing points + points earned on this sale).
+ * Returns the customer ID, updated loyalty points, and points earned on this sale.
  */
 export async function recordCustomerSale(
   customerPhone: string,
@@ -271,11 +292,11 @@ export async function recordCustomerSale(
   paymentMode: string,
   firstProductId?: number,
   dueAmount?: number
-): Promise<void> {
+): Promise<{ customerId: number; updatedPoints: number; earnedPoints: number } | null> {
   const phone = (customerPhone || "").trim();
   const name = (customerName || "").trim();
   if (!phone && (!name || name.toLowerCase() === "walk-in customer")) {
-    return; // Walk-in customer without phone, skip profile link
+    return null; // Walk-in customer without phone, skip profile link
   }
 
   const db = await getDb();
@@ -283,26 +304,29 @@ export async function recordCustomerSale(
   // Find existing customer by phone or name
   let customerId: number | null = null;
   let currentDues = 0;
+  let existingPoints = 0;
 
   if (phone) {
-    const rows = await db.select<{ id: number; dues: number }[]>(
-      "SELECT id, dues FROM customers WHERE phone = $1 LIMIT 1",
+    const rows = await db.select<{ id: number; dues: number; loyalty_points: number }[]>(
+      "SELECT id, dues, loyalty_points FROM customers WHERE phone = $1 LIMIT 1",
       [phone]
     );
     if (rows.length > 0) {
       customerId = rows[0].id;
       currentDues = Number(rows[0].dues) || 0;
+      existingPoints = Number(rows[0].loyalty_points) || 0;
     }
   }
 
   if (!customerId && name && name.toLowerCase() !== "walk-in customer") {
-    const rows = await db.select<{ id: number; dues: number }[]>(
-      "SELECT id, dues FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
+    const rows = await db.select<{ id: number; dues: number; loyalty_points: number }[]>(
+      "SELECT id, dues, loyalty_points FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
       [name]
     );
     if (rows.length > 0) {
       customerId = rows[0].id;
       currentDues = Number(rows[0].dues) || 0;
+      existingPoints = Number(rows[0].loyalty_points) || 0;
     }
   }
 
@@ -316,23 +340,12 @@ export async function recordCustomerSale(
     addedDues = isCreditSale ? grandTotal : 0;
   }
 
-  // Calculate overall total spent by this customer across all sales
-  const spentRows = await db.select<{ total_spent: number }[]>(
-    `SELECT COALESCE(SUM(grand_total), 0) as total_spent 
-     FROM sales 
-     WHERE (customer_phone = $1 AND customer_phone IS NOT NULL AND customer_phone != '') 
-        OR (LOWER(customer_name) = LOWER($2) AND customer_name IS NOT NULL AND customer_name != '')`,
-    [phone, name]
-  );
-
-  let totalSpent = spentRows.length > 0 ? Number(spentRows[0].total_spent) || 0 : 0;
-  if (totalSpent === 0 && grandTotal > 0) {
-    totalSpent = grandTotal;
-  }
-  const updatedPoints = calculateLoyaltyPoints(totalSpent);
+  const earnedPoints = calculateLoyaltyPoints(grandTotal);
+  let updatedPoints = 0;
 
   // If customer doesn't exist, create automatically with calculated initial points and dues
   if (!customerId) {
+    updatedPoints = earnedPoints;
     const newName = (name ? name.toUpperCase() : `Customer (${phone})`).toUpperCase();
     const initialDues = addedDues;
     const insertRes = await db.execute(
@@ -342,7 +355,19 @@ export async function recordCustomerSale(
     );
     customerId = insertRes.lastInsertId ?? null;
   } else {
-    // Existing customer: update dues, purchase_item_id, and loyalty_points
+    // Existing customer: add earned points to existing points, also ensure >= spent-based formula
+    const spentRows = await db.select<{ total_spent: number }[]>(
+      `SELECT COALESCE(SUM(grand_total), 0) as total_spent 
+       FROM sales 
+       WHERE (customer_phone = $1 AND customer_phone IS NOT NULL AND customer_phone != '') 
+          OR (LOWER(customer_name) = LOWER($2) AND customer_name IS NOT NULL AND customer_name != '')`,
+      [phone, name]
+    );
+    const totalSpent = spentRows.length > 0 ? Number(spentRows[0].total_spent) || 0 : 0;
+    const spentBasedPoints = calculateLoyaltyPoints(totalSpent);
+
+    updatedPoints = Math.max(existingPoints + earnedPoints, spentBasedPoints);
+
     const newDues = currentDues + addedDues;
     if (firstProductId) {
       await db.execute(
@@ -356,6 +381,8 @@ export async function recordCustomerSale(
       );
     }
   }
+
+  return { customerId: customerId ?? 0, updatedPoints, earnedPoints };
 }
 
 export async function getCustomerStats(): Promise<CustomerStatsData> {

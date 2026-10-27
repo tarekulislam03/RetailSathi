@@ -11,6 +11,7 @@ import {
   getDevicePrinterSettings,
   saveDevicePrinterSettings,
 } from "../../../services/deviceSettingsService";
+import { getDb } from "../../../services/database";
 
 export interface CheckoutPaymentDetails {
   paymentMode: string;
@@ -146,6 +147,40 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
   const cashPaid = paymentDetails.cashPaid;
   const upiPaid = paymentDetails.upiPaid;
   const changeReturn = Math.max(0, paidAmount - grandTotal);
+
+  const isNamedCustomer = Boolean(
+    customerPhone.trim() ||
+      (customerName.trim() && customerName.trim().toLowerCase() !== "walk-in customer")
+  );
+  const earnedLoyaltyPoints = Math.floor(grandTotal / 100);
+  const [existingLoyaltyPoints, setExistingLoyaltyPoints] = useState<number>(0);
+  const [existingCustomerId, setExistingCustomerId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !isNamedCustomer) return;
+    const phone = customerPhone.trim();
+    const name = customerName.trim();
+    getDb().then(async (db) => {
+      try {
+        const rows = await db.select<{ id: number; loyalty_points: number }[]>(
+          "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+          [phone, name]
+        );
+        if (rows.length > 0) {
+          setExistingCustomerId(rows[0].id);
+          setExistingLoyaltyPoints(Number(rows[0].loyalty_points) || 0);
+        } else {
+          setExistingCustomerId(null);
+          setExistingLoyaltyPoints(0);
+        }
+      } catch {
+        setExistingCustomerId(null);
+        setExistingLoyaltyPoints(0);
+      }
+    });
+  }, [isOpen, customerPhone, customerName, isNamedCustomer]);
+
+  const projectedLoyaltyPoints = existingLoyaltyPoints + earnedLoyaltyPoints;
 
   // Pagination
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -338,6 +373,29 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
               <strong style={{ color: "#0f172a" }}>
                 {customerName.trim() || "Walk-in Customer"}
               </strong>
+              {existingCustomerId ? (
+                <span
+                  style={{
+                    display: "block",
+                    color: "#0284c7",
+                    fontSize: "0.76rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  Customer ID: #{existingCustomerId}
+                </span>
+              ) : isNamedCustomer ? (
+                <span
+                  style={{
+                    display: "block",
+                    color: "#16a34a",
+                    fontSize: "0.76rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  (New Customer)
+                </span>
+              ) : null}
               {customerPhone && (
                 <span
                   style={{
@@ -435,6 +493,36 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
                 {dueAmount > 0 ? `Due: ₹${dueAmount.toFixed(2)}` : "Paid in Full"}
               </span>
             </div>
+
+            {isNamedCustomer && (
+              <div>
+                <span
+                  style={{
+                    color: "#64748b",
+                    display: "block",
+                    fontSize: "0.72rem",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
+                  Loyalty Points
+                </span>
+                <strong style={{ color: "#0066cc" }}>
+                  {projectedLoyaltyPoints} pts
+                </strong>
+                {earnedLoyaltyPoints > 0 && (
+                  <span
+                    style={{
+                      display: "block",
+                      color: "#16a34a",
+                      fontSize: "0.76rem",
+                    }}
+                  >
+                    (+{earnedLoyaltyPoints} earned)
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Items Summary Table */}
@@ -700,6 +788,31 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
               >
                 <span>Change Return:</span>
                 <span>₹{changeReturn.toFixed(2)}</span>
+              </div>
+            )}
+
+            {isNamedCustomer && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: "8px",
+                  paddingTop: "8px",
+                  borderTop: "1px dashed #cbd5e1",
+                  fontSize: "0.85rem",
+                  color: "#0369a1",
+                  fontWeight: 600,
+                }}
+              >
+                <span>Total Loyalty Points:</span>
+                <span style={{ fontWeight: 700 }}>
+                  {projectedLoyaltyPoints} pts
+                  {earnedLoyaltyPoints > 0 && (
+                    <span style={{ color: "#16a34a", marginLeft: "4px" }}>
+                      (+{earnedLoyaltyPoints} this bill)
+                    </span>
+                  )}
+                </span>
               </div>
             )}
           </div>

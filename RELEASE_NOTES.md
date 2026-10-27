@@ -1,3 +1,20 @@
+# Retail Sathi v0.2.8 - Receipt Customer ID & Loyalty Points, Exact Customer Search
+
+### 🚀 Key Features & Enhancements
+- **Updated Post-Sale Loyalty Points on Receipt**:
+  - Automatically calculates and prints the customer's updated total loyalty points on bills and receipts.
+  - Existing customers with previous points (e.g. 45 points) receiving extra points on a new purchase (e.g. 8 points) now print the updated total (e.g. 53 points) on both physical thermal receipts and digital invoices.
+  - New customers enrolled at checkout receive and print their current earned loyalty points on their receipt.
+  - Thermal ESC/POS receipts and review modals display itemized points earned (+X pts) and the updated total balance.
+- **Customer ID on Receipts & Invoices**:
+  - Automatically prints `Customer ID: #<id>` on thermal ESC/POS receipts, invoice previews, and checkout review modals.
+  - Seamlessly links customer ID to sales history and historical invoice re-prints.
+- **Exact Customer Search by Customer ID & Searchable Phone**:
+  - In POS billing, Customer Name search supports exact Customer ID matching (e.g. typing `78` or `#78` matches only Customer #78, preventing false positives from partial phone digits).
+  - Searchable Customer Phone field with auto-complete dropdown, allowing cashiers to search by phone prefix, customer name, or customer ID and auto-fill customer information in one click.
+
+---
+
 # Retail Sathi v0.2.7 - Customer Loyalty Points, Lucky Draw Tracker & Uppercase Normalization
 
 ### 🚀 Key Features & Enhancements

@@ -10,6 +10,7 @@ export interface Sale {
   invoice_no: string;
   customer_name: string;
   customer_phone: string;
+  customer_id?: number | null;
   total_amount: number;
   discount: number;
   tax_amount: number;
@@ -20,6 +21,8 @@ export interface Sale {
   cash_paid?: number;
   upi_paid?: number;
   marketing_person_id?: number | null;
+  loyalty_points?: number;
+  points_earned?: number;
   created_at?: string;
   items?: SaleItem[];
 }

@@ -85,6 +85,8 @@ export function createMockDatabase() {
       grand_total REAL NOT NULL,
       payment_mode TEXT NOT NULL,
       marketing_person_id INTEGER,
+      customer_id INTEGER,
+      loyalty_points REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (marketing_person_id) REFERENCES marketing(id) ON DELETE SET NULL
     );

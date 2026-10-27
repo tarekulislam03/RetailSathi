@@ -167,9 +167,12 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
   }
 
   // 4. Record sale on customer profile (update loyalty points, dues & purchased item)
+  let updatedLoyaltyPoints: number | undefined;
+  let earnedLoyaltyPoints: number | undefined;
+  let customerId: number | undefined;
   try {
     const firstProductId = input.items[0]?.product_id;
-    await recordCustomerSale(
+    const custResult = await recordCustomerSale(
       input.customer_phone || "",
       input.customer_name || "",
       grandTotal,
@@ -177,6 +180,15 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
       firstProductId,
       input.due_amount
     );
+    if (custResult) {
+      customerId = custResult.customerId;
+      updatedLoyaltyPoints = custResult.updatedPoints;
+      earnedLoyaltyPoints = custResult.earnedPoints;
+      await db.execute(
+        "UPDATE sales SET loyalty_points = $1, customer_id = $2 WHERE id = $3",
+        [updatedLoyaltyPoints, customerId, saleId]
+      );
+    }
   } catch (custErr) {
     console.error("Failed to sync customer sale record:", custErr);
   }
@@ -184,6 +196,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
   return {
     id: saleId,
     invoice_no: invoiceNo,
+    customer_id: customerId,
     customer_name: input.customer_name || "Walk-in Customer",
     customer_phone: input.customer_phone || "",
     total_amount: dbTotalAmount,
@@ -195,6 +208,8 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
     due_amount: input.due_amount,
     cash_paid: input.cash_paid,
     upi_paid: input.upi_paid,
+    loyalty_points: updatedLoyaltyPoints,
+    points_earned: earnedLoyaltyPoints,
     created_at: localCreatedAt,
     items: saleItems,
   };
@@ -254,6 +269,33 @@ export async function fetchSaleDetails(saleId: number): Promise<Sale | null> {
     [saleId]
   );
   sale.items = items;
+
+  // Fallback to customer table loyalty points and customer ID if not stored on historical sale
+  if (
+    (!sale.customer_id || sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
+    (sale.customer_phone || (sale.customer_name && sale.customer_name.toLowerCase() !== "walk-in customer"))
+  ) {
+    try {
+      const custRows = await db.select<{ id: number; loyalty_points: number }[]>(
+        "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+        [sale.customer_phone || "", sale.customer_name || ""]
+      );
+      if (custRows.length > 0) {
+        if (!sale.customer_id) {
+          sale.customer_id = custRows[0].id;
+        }
+        if (
+          (sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
+          custRows[0].loyalty_points > 0
+        ) {
+          sale.loyalty_points = custRows[0].loyalty_points;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   return sale;
 }
 
@@ -314,6 +356,33 @@ export async function fetchSaleByInvoice(invoiceNo: string): Promise<Sale | null
     [sale.invoice_no, sale.id]
   );
   sale.items = items;
+
+  // Fallback to customer table loyalty points and customer ID if not stored on historical sale
+  if (
+    (!sale.customer_id || sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
+    (sale.customer_phone || (sale.customer_name && sale.customer_name.toLowerCase() !== "walk-in customer"))
+  ) {
+    try {
+      const custRows = await db.select<{ id: number; loyalty_points: number }[]>(
+        "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+        [sale.customer_phone || "", sale.customer_name || ""]
+      );
+      if (custRows.length > 0) {
+        if (!sale.customer_id) {
+          sale.customer_id = custRows[0].id;
+        }
+        if (
+          (sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
+          custRows[0].loyalty_points > 0
+        ) {
+          sale.loyalty_points = custRows[0].loyalty_points;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   return sale;
 }
 
@@ -696,6 +765,13 @@ export async function deleteSale(saleId: number): Promise<void> {
   // 7. Recalculate customer loyalty points after sale deletion
   if (customerId && (phone || name)) {
     try {
+      const custRows = await db.select<{ loyalty_points: number }[]>(
+        "SELECT loyalty_points FROM customers WHERE id = $1",
+        [customerId]
+      );
+      const currentPts = custRows.length > 0 ? Number(custRows[0].loyalty_points) || 0 : 0;
+      const salePoints = sale.points_earned !== undefined ? sale.points_earned : calculateLoyaltyPoints(sale.grand_total);
+
       const spentRows = await db.select<{ total_spent: number }[]>(
         `SELECT COALESCE(SUM(grand_total), 0) as total_spent 
          FROM sales 
@@ -705,7 +781,10 @@ export async function deleteSale(saleId: number): Promise<void> {
       );
       const totalSpent =
         spentRows.length > 0 ? Number(spentRows[0].total_spent) || 0 : 0;
-      const newPoints = calculateLoyaltyPoints(totalSpent);
+      const spentBasedPoints = calculateLoyaltyPoints(totalSpent);
+
+      const newPoints =
+        totalSpent > 0 ? spentBasedPoints : Math.max(0, currentPts - salePoints);
       await db.execute(
         "UPDATE customers SET loyalty_points = $1 WHERE id = $2",
         [newPoints, customerId]

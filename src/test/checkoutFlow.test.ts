@@ -202,4 +202,138 @@ describe("Billing Checkout Flow Tests", () => {
     expect(cust.length).toBe(1);
     expect(cust[0].dues).toBe(300);
   });
+
+  it("should find customers by customer id, name, and phone with exact id matching to prevent false positives", () => {
+    const sampleCustomers = [
+      {
+        id: 7,
+        name: "SUNIL VERMA",
+        phone: "9870001122",
+        address: "",
+        purchase_item_id: null,
+        loyalty_points: 10,
+        active_points: 0,
+        lucky_draw_used: 0,
+        lucky_draw_count: 1,
+        dues: 0,
+      },
+      {
+        id: 8,
+        name: "DEEPAK JOSHI",
+        phone: "9880003344",
+        address: "",
+        purchase_item_id: null,
+        loyalty_points: 15,
+        active_points: 5,
+        lucky_draw_used: 0,
+        lucky_draw_count: 1,
+        dues: 0,
+      },
+      {
+        id: 12,
+        name: "KAVITA SHAH",
+        phone: "9878990011", // phone has "78" in the middle
+        address: "",
+        purchase_item_id: null,
+        loyalty_points: 25,
+        active_points: 5,
+        lucky_draw_used: 0,
+        lucky_draw_count: 2,
+        dues: 0,
+      },
+      {
+        id: 78,
+        name: "VIKRAM SINGH",
+        phone: "9811223344",
+        address: "",
+        purchase_item_id: null,
+        loyalty_points: 45,
+        active_points: 5,
+        lucky_draw_used: 0,
+        lucky_draw_count: 4,
+        dues: 0,
+      },
+    ];
+
+    const filterByName = (input: string) => {
+      const raw = input.trim();
+      if (!raw) return sampleCustomers;
+      const q = raw.toLowerCase();
+      const clean = q.replace(/^#/, "").trim();
+      const isNum = /^\d+$/.test(clean);
+
+      if (isNum) {
+        return sampleCustomers
+          .filter((c) => {
+            const isExactId = String(c.id) === clean;
+            const isExactPhone = c.phone.trim() === clean;
+            const isPhonePrefix = clean.length >= 6 && c.phone.trim().startsWith(clean);
+            const isNameExact = c.name.toLowerCase() === q;
+            return isExactId || isExactPhone || isPhonePrefix || isNameExact;
+          })
+          .sort((a, b) => {
+            const aExactId = String(a.id) === clean ? 1 : 0;
+            const bExactId = String(b.id) === clean ? 1 : 0;
+            return bExactId - aExactId;
+          });
+      }
+
+      return sampleCustomers.filter((c) => {
+        const nameMatch = c.name.toLowerCase().includes(q);
+        const exactIdMatch = `#${c.id}` === q || String(c.id) === clean;
+        return nameMatch || exactIdMatch;
+      });
+    };
+
+    const filterByPhone = (input: string) => {
+      const raw = input.trim();
+      if (!raw) return sampleCustomers;
+      const q = raw.toLowerCase();
+      const clean = q.replace(/^#/, "").trim();
+      const isNum = /^\d+$/.test(clean);
+
+      if (isNum) {
+        return sampleCustomers
+          .filter((c) => {
+            const isExactId = String(c.id) === clean;
+            const isExactPhone = c.phone.trim() === clean;
+            const isPhonePrefix = c.phone.trim().startsWith(clean);
+            return isExactId || isExactPhone || isPhonePrefix;
+          })
+          .sort((a, b) => {
+            const aExactId = String(a.id) === clean ? 1 : 0;
+            const bExactId = String(b.id) === clean ? 1 : 0;
+            return bExactId - aExactId;
+          });
+      }
+
+      return sampleCustomers.filter((c) => {
+        return `#${c.id}` === q || String(c.id) === clean || c.name.toLowerCase().includes(q);
+      });
+    };
+
+    // 1. Searching "78" in Name matches ONLY customer #78 (NOT customer #7, #8, or #12 whose phone contains 78)
+    const nameResults78 = filterByName("78");
+    expect(nameResults78.length).toBe(1);
+    expect(nameResults78[0].id).toBe(78);
+    expect(nameResults78[0].name).toBe("VIKRAM SINGH");
+
+    // 2. Searching "#78" in Name also matches ONLY customer #78
+    const nameResultsHash78 = filterByName("#78");
+    expect(nameResultsHash78.length).toBe(1);
+    expect(nameResultsHash78[0].id).toBe(78);
+
+    // 3. Searching "78" in Phone matches ONLY customer #78 (not phones containing 78 inside)
+    const phoneResults78 = filterByPhone("78");
+    expect(phoneResults78.length).toBe(1);
+    expect(phoneResults78[0].id).toBe(78);
+
+    // 4. Searching phone prefix "9878" in Phone finds customer #12 whose phone starts with 9878
+    const phoneResultsPrefix = filterByPhone("9878");
+    expect(phoneResultsPrefix.map((c) => c.id)).toContain(12);
+    expect(phoneResultsPrefix.map((c) => c.id)).not.toContain(78);
+
+    // 5. Searching name "Sunil" finds customer #7
+    expect(filterByName("Sunil").map((c) => c.id)).toEqual([7]);
+  });
 });

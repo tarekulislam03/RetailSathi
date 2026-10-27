@@ -165,7 +165,7 @@ export function createReceiptCanvas(
 
   const items = sale.items || [];
   const baseHeight =
-    850 +
+    950 +
     items.length * 60 +
     (showBarcode ? 140 : 0) +
     (showUpiQr ? 450 : 0) +
@@ -305,12 +305,18 @@ export function createReceiptCanvas(
   y = drawTwoColumnText("Bill No:", `#${sale.invoice_no}`, "bold 20px sans-serif", y);
   y = drawTwoColumnText("Date & Time:", dateStr, "20px sans-serif", y);
 
-  if (showCustomer && (sale.customer_name || sale.customer_phone)) {
+  if (showCustomer && (sale.customer_name || sale.customer_phone || sale.customer_id)) {
+    if (sale.customer_id) {
+      y = drawTwoColumnText("Customer ID:", `#${sale.customer_id}`, "bold 20px sans-serif", y);
+    }
     if (sale.customer_name && sale.customer_name !== "Walk-in Customer") {
       y = drawTwoColumnText("Customer Name:", sale.customer_name, "20px sans-serif", y); // 1.8rem
     }
     if (sale.customer_phone) {
       y = drawTwoColumnText("Customer Phone:", sale.customer_phone, "20px sans-serif", y); // 1.8rem
+    }
+    if (sale.loyalty_points !== undefined && sale.loyalty_points !== null) {
+      y = drawTwoColumnText("Loyalty Points:", `${sale.loyalty_points} pts`, "bold 20px sans-serif", y);
     }
   }
 
@@ -437,6 +443,24 @@ export function createReceiptCanvas(
   }
   if (sale.due_amount !== undefined && sale.due_amount > 0) {
     y = drawTwoColumnText("Remaining Due:", `Rs. ${sale.due_amount.toFixed(2)}`, "bold 20px sans-serif", y);
+  }
+
+  // Loyalty Points Summary
+  const isNamedOrPhoneCustomer = Boolean(
+    sale.customer_phone ||
+      (sale.customer_name && sale.customer_name.trim().toLowerCase() !== "walk-in customer")
+  );
+  if (
+    sale.loyalty_points !== undefined &&
+    sale.loyalty_points !== null &&
+    (sale.loyalty_points > 0 || isNamedOrPhoneCustomer)
+  ) {
+    drawDashedLine(y);
+    y += 18;
+    if (sale.points_earned !== undefined && sale.points_earned > 0) {
+      y = drawTwoColumnText("Points Earned:", `+${sale.points_earned} pts`, "20px sans-serif", y);
+    }
+    y = drawTwoColumnText("Total Loyalty Points:", `${sale.loyalty_points} pts`, "bold 24px sans-serif", y);
   }
 
   // 5. SAVINGS BANNER

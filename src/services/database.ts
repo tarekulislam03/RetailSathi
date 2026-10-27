@@ -284,6 +284,8 @@ async function initTables(db: Database) {
       grand_total REAL NOT NULL,
       payment_mode TEXT NOT NULL,
       marketing_person_id INTEGER,
+      customer_id INTEGER,
+      loyalty_points REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (marketing_person_id) REFERENCES marketing(id) ON DELETE SET NULL
     );
@@ -395,6 +397,8 @@ async function initTables(db: Database) {
     "ALTER TABLE products ADD COLUMN gst_rate REAL DEFAULT 0",
     "ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0",
     "ALTER TABLE sales ADD COLUMN marketing_person_id INTEGER",
+    "ALTER TABLE sales ADD COLUMN loyalty_points REAL DEFAULT 0",
+    "ALTER TABLE sales ADD COLUMN customer_id INTEGER",
     "ALTER TABLE sale_items ADD COLUMN mrp REAL DEFAULT 0",
     "ALTER TABLE sale_items ADD COLUMN invoice_no TEXT",
     "ALTER TABLE purchase_items ADD COLUMN batch_no TEXT",

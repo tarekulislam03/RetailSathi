@@ -1061,6 +1061,96 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       console.log("customer loyalty points and dues calculation test passed!");
     });
+
+    it("should show updated loyalty points on receipt for existing customer (45 + 8 = 53 pts) and new customer (8 pts)", async () => {
+      // 1. Existing customer already in database with 45 loyalty points
+      const custId = await createCustomer({
+        name: "VIKRAM SINGH",
+        phone: "9876500001",
+        loyalty_points: 45,
+      });
+
+      const initialCust = await fetchCustomers();
+      const vikramBefore = initialCust.find((c) => c.id === custId);
+      expect(vikramBefore?.loyalty_points).toBe(45);
+
+      // Create a test product: ₹100 each
+      const prod = await createProduct({
+        name: "Test Grocery Item",
+        category: "Groceries",
+        price: 100,
+        cost_price: 70,
+        stock: 50,
+        unit: "pcs",
+        barcode: "990011223344",
+      });
+
+      // Existing customer purchases 8 units = ₹800 (gains 8 points)
+      const vikramSale = await createSale({
+        customer_name: "VIKRAM SINGH",
+        customer_phone: "9876500001",
+        payment_mode: "Cash",
+        paid_amount: 800,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Test Grocery Item",
+            barcode: "990011223344",
+            price: 100,
+            quantity: 8,
+          },
+        ],
+      });
+
+      // Updated points and customer ID on receipt/bill should be 53 (45 + 8) and custId
+      expect(vikramSale.loyalty_points).toBe(53);
+      expect(vikramSale.points_earned).toBe(8);
+      expect(vikramSale.customer_id).toBe(custId);
+
+      // Verify customer in database is updated to 53 points
+      const customersAfterVikram = await fetchCustomers();
+      const vikramAfter = customersAfterVikram.find((c) => c.id === custId);
+      expect(vikramAfter?.loyalty_points).toBe(53);
+
+      // Verify fetching sale details preserves 53 loyalty points and customer ID
+      const fetchedVikramSale = await fetchSaleDetails(vikramSale.id);
+      expect(fetchedVikramSale?.loyalty_points).toBe(53);
+      expect(fetchedVikramSale?.customer_id).toBe(custId);
+
+      // 2. New customer: not previously in database
+      // Purchases 8 units = ₹800 (gains 8 points)
+      const newCustSale = await createSale({
+        customer_name: "PRIYA SHARMA",
+        customer_phone: "9876500002",
+        payment_mode: "Cash",
+        paid_amount: 800,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Test Grocery Item",
+            barcode: "990011223344",
+            price: 100,
+            quantity: 8,
+          },
+        ],
+      });
+
+      // Bill should print current loyalty points gained: 8 points
+      expect(newCustSale.loyalty_points).toBe(8);
+      expect(newCustSale.points_earned).toBe(8);
+
+      // Verify newly created customer in database has 8 points
+      const customersAfterPriya = await fetchCustomers();
+      const priya = customersAfterPriya.find((c) => c.phone === "9876500002");
+      expect(priya).not.toBeUndefined();
+      expect(priya?.loyalty_points).toBe(8);
+      expect(newCustSale.customer_id).toBe(priya?.id);
+
+      // Verify fetching sale details preserves 8 loyalty points and customer ID
+      const fetchedPriyaSale = await fetchSaleDetails(newCustSale.id);
+      expect(fetchedPriyaSale?.loyalty_points).toBe(8);
+      expect(fetchedPriyaSale?.customer_id).toBe(priya?.id);
+    });
   });
 
   // 7. STOCK LEDGER FEATURE TESTS

@@ -19,6 +19,10 @@ export interface CustomerInput {
   name: string;
   phone: string;
   address?: string;
+  purchase_item_id?: number | null;
+  dues?: number;
+  lucky_draw_used?: number;
+  loyalty_points?: number;
 }
 
 export interface CustomerStatsData {

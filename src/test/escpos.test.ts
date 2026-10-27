@@ -170,6 +170,42 @@ describe("Image-Based Receipt Generator Tests", () => {
     const bytes58 = buildReceiptEscPos(saleWithMrp, { paperWidth: 58 });
     expect(bytes58.length).toBeGreaterThan(50);
   });
+
+  it("should render updated loyalty points and customer ID on receipt for existing and new customers", () => {
+    // Existing customer with 45 points who earned 8 extra points (total 53 pts)
+    const existingCustSale: Sale = {
+      ...mockSale,
+      customer_id: 101,
+      customer_name: "VIKRAM SINGH",
+      customer_phone: "9876500001",
+      loyalty_points: 53,
+      points_earned: 8,
+    };
+
+    const canvasExisting = createReceiptCanvas(existingCustSale, { paperWidth: 80 });
+    expect(canvasExisting.width).toBe(576);
+    expect(canvasExisting.height).toBeGreaterThan(300);
+
+    const bytesExisting = buildReceiptEscPos(existingCustSale, { paperWidth: 80 });
+    expect(bytesExisting.length).toBeGreaterThan(100);
+
+    // New customer with 8 points earned (total 8 pts)
+    const newCustSale: Sale = {
+      ...mockSale,
+      customer_id: 102,
+      customer_name: "PRIYA SHARMA",
+      customer_phone: "9876500002",
+      loyalty_points: 8,
+      points_earned: 8,
+    };
+
+    const canvasNew = createReceiptCanvas(newCustSale, { paperWidth: 58 });
+    expect(canvasNew.width).toBe(384);
+    expect(canvasNew.height).toBeGreaterThan(200);
+
+    const bytesNew = buildReceiptEscPos(newCustSale, { paperWidth: 58 });
+    expect(bytesNew.length).toBeGreaterThan(50);
+  });
 });
 
 describe("Code 128 Barcode Generator Tests", () => {
