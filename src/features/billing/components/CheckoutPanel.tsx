@@ -35,7 +35,8 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
   onCheckout,
   isProcessing = false,
 }) => {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isNameDropdownOpen, setIsNameDropdownOpen] = useState(false);
+  const [isPhoneDropdownOpen, setIsPhoneDropdownOpen] = useState(false);
 
   // Split Payment Inputs
   const [cashPaidInput, setCashPaidInput] = useState<string>("");
@@ -90,20 +91,90 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
     }
   }
 
-  const filteredCustomers = customers.filter((c) => {
-    const query = customerName.toLowerCase().trim();
-    if (!query) return true;
-    return (
-      c.name.toLowerCase().includes(query) ||
-      c.phone.toLowerCase().includes(query)
-    );
-  });
+  const filterCustomersByName = (list: Customer[], input: string) => {
+    const raw = input.trim();
+    if (!raw) return list;
+    const query = raw.toLowerCase();
+    const cleanQuery = query.replace(/^#/, "").trim();
+    const isNumeric = /^\d+$/.test(cleanQuery);
 
-  const selectedCustomer = customers.find(
-    (c) =>
-      (customerPhone && c.phone.trim() === customerPhone.trim()) ||
-      (customerName && c.name.toLowerCase().trim() === customerName.toLowerCase().trim())
-  );
+    if (isNumeric) {
+      // User typed numeric query (e.g. "78" or "#78"):
+      // Must match exact customer ID, or phone starting with full digits (when 6+ digits entered)
+      return list
+        .filter((c) => {
+          const isExactId = String(c.id) === cleanQuery;
+          const isExactPhone = c.phone.trim() === cleanQuery;
+          const isPhonePrefix = cleanQuery.length >= 6 && c.phone.trim().startsWith(cleanQuery);
+          const isNameExact = c.name.toLowerCase() === query;
+          return isExactId || isExactPhone || isPhonePrefix || isNameExact;
+        })
+        .sort((a, b) => {
+          const aExactId = String(a.id) === cleanQuery ? 1 : 0;
+          const bExactId = String(b.id) === cleanQuery ? 1 : 0;
+          return bExactId - aExactId;
+        });
+    }
+
+    // Non-numeric query: search customer name or exact #id
+    return list.filter((c) => {
+      const nameMatch = c.name.toLowerCase().includes(query);
+      const exactIdMatch = `#${c.id}` === query || String(c.id) === cleanQuery;
+      return nameMatch || exactIdMatch;
+    });
+  };
+
+  const filterCustomersByPhone = (list: Customer[], input: string) => {
+    const raw = input.trim();
+    if (!raw) return list;
+    const query = raw.toLowerCase();
+    const cleanQuery = query.replace(/^#/, "").trim();
+    const isNumeric = /^\d+$/.test(cleanQuery);
+
+    if (isNumeric) {
+      // User typed numeric query in phone field (e.g. "78" or "9876543210"):
+      // Matches exact customer ID or phone number that STARTS with the digits
+      return list
+        .filter((c) => {
+          const isExactId = String(c.id) === cleanQuery;
+          const isExactPhone = c.phone.trim() === cleanQuery;
+          const isPhonePrefix = c.phone.trim().startsWith(cleanQuery);
+          return isExactId || isExactPhone || isPhonePrefix;
+        })
+        .sort((a, b) => {
+          const aExactId = String(a.id) === cleanQuery ? 1 : 0;
+          const bExactId = String(b.id) === cleanQuery ? 1 : 0;
+          const aExactPhone = a.phone.trim() === cleanQuery ? 1 : 0;
+          const bExactPhone = b.phone.trim() === cleanQuery ? 1 : 0;
+          return (bExactId + bExactPhone) - (aExactId + aExactPhone);
+        });
+    }
+
+    // Non-numeric query: search customer name or exact #id
+    return list.filter((c) => {
+      return (
+        `#${c.id}` === query ||
+        String(c.id) === cleanQuery ||
+        c.name.toLowerCase().includes(query)
+      );
+    });
+  };
+
+  const filteredCustomersByName = filterCustomersByName(customers, customerName);
+  const filteredCustomersByPhone = filterCustomersByPhone(customers, customerPhone);
+
+  const selectedCustomer = customers.find((c) => {
+    const nameTrim = customerName.trim();
+    const phoneTrim = customerPhone.trim();
+    const cleanName = nameTrim.replace(/^#/, "");
+    const cleanPhone = phoneTrim.replace(/^#/, "");
+
+    if (phoneTrim && c.phone.trim() === phoneTrim) return true;
+    if (nameTrim && c.name.toLowerCase().trim() === nameTrim.toLowerCase()) return true;
+    if (nameTrim && (cleanName === String(c.id) || nameTrim === `#${c.id}`)) return true;
+    if (phoneTrim && (cleanPhone === String(c.id) || phoneTrim === `#${c.id}`)) return true;
+    return false;
+  });
 
   const isSplitMode = paymentMode === "Split (Cash + UPI)" || paymentMode === "Split";
 
@@ -158,26 +229,27 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
     <div className="card checkout-card">
       <h2>Payment & Checkout</h2>
 
-      {/* Searchable Customer Dropdown */}
+      {/* Searchable Customer Name Dropdown */}
       <div className="form-group" style={{ position: "relative" }}>
         <label htmlFor="cName">Customer Name</label>
         <input
           id="cName"
           type="text"
-          placeholder="Search name or phone..."
+          placeholder="Search name, phone, or customer ID (#)..."
           value={customerName}
           onChange={(e) => {
-            setCustomerName(e.target.value);
-            setIsDropdownOpen(true);
+            setCustomerName(e.target.value.toUpperCase());
+            setIsNameDropdownOpen(true);
           }}
-          onFocus={() => setIsDropdownOpen(true)}
-          onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+          style={{ textTransform: "uppercase" }}
+          onFocus={() => setIsNameDropdownOpen(true)}
+          onBlur={() => setTimeout(() => setIsNameDropdownOpen(false), 200)}
           autoComplete="off"
         />
 
-        {isDropdownOpen && (
+        {isNameDropdownOpen && (
           <div className="search-dropdown" style={{ maxHeight: "220px" }}>
-            {filteredCustomers.slice(0, 8).map((c) => (
+            {filteredCustomersByName.slice(0, 8).map((c) => (
               <div
                 key={c.id}
                 className="dropdown-item"
@@ -185,23 +257,50 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
                 onClick={() => {
                   setCustomerName(c.name);
                   setCustomerPhone(c.phone);
-                  setIsDropdownOpen(false);
+                  setIsNameDropdownOpen(false);
                 }}
               >
                 <div className="item-info">
-                  <span className="dropdown-title">{c.name}</span>
+                  <span className="dropdown-title">
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: "#e0f2fe",
+                        color: "#0369a1",
+                        padding: "1px 6px",
+                        borderRadius: "4px",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        marginRight: "6px",
+                      }}
+                    >
+                      #{c.id}
+                    </span>
+                    {c.name}
+                  </span>
                   <span className="dropdown-sub">{c.phone || "No phone"}</span>
                 </div>
                 <div className="item-meta">
                   <span
                     style={{
                       fontSize: "0.78rem",
-                      color: "#0066cc",
+                      color: "#16a34a",
                       fontWeight: 600,
                     }}
                   >
-                    {c.loyalty_points} pts
+                    {c.active_points ?? (c.loyalty_points % 10)} active pts
                   </span>
+                  {(c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)) > 0 && (
+                    <span
+                      style={{
+                        fontSize: "0.76rem",
+                        color: "#d97706",
+                        fontWeight: 700,
+                      }}
+                    >
+                      🎟️ {c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)} draw
+                    </span>
+                  )}
                   {c.dues > 0 && (
                     <span
                       style={{
@@ -228,7 +327,7 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
                     fontWeight: 600,
                   }}
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setIsDropdownOpen(false)}
+                  onClick={() => setIsNameDropdownOpen(false)}
                 >
                   <div className="item-info">
                     <span className="dropdown-title" style={{ color: "#137333" }}>
@@ -244,15 +343,115 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
         )}
       </div>
 
-      <div className="form-group">
+      {/* Searchable Customer Phone Dropdown */}
+      <div className="form-group" style={{ position: "relative" }}>
         <label htmlFor="cPhone">Customer Phone</label>
         <input
           id="cPhone"
           type="text"
-          placeholder="Enter mobile no"
+          placeholder="Search or enter mobile no..."
           value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
+          onChange={(e) => {
+            setCustomerPhone(e.target.value);
+            setIsPhoneDropdownOpen(true);
+          }}
+          onFocus={() => setIsPhoneDropdownOpen(true)}
+          onBlur={() => setTimeout(() => setIsPhoneDropdownOpen(false), 200)}
+          autoComplete="off"
         />
+
+        {isPhoneDropdownOpen && (
+          <div className="search-dropdown" style={{ maxHeight: "220px" }}>
+            {filteredCustomersByPhone.slice(0, 8).map((c) => (
+              <div
+                key={c.id}
+                className="dropdown-item"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setCustomerName(c.name);
+                  setCustomerPhone(c.phone);
+                  setIsPhoneDropdownOpen(false);
+                }}
+              >
+                <div className="item-info">
+                  <span className="dropdown-title">
+                    <span
+                      style={{
+                        display: "inline-block",
+                        background: "#e0f2fe",
+                        color: "#0369a1",
+                        padding: "1px 6px",
+                        borderRadius: "4px",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        marginRight: "6px",
+                      }}
+                    >
+                      #{c.id}
+                    </span>
+                    {c.phone || "No phone"}
+                  </span>
+                  <span className="dropdown-sub">{c.name}</span>
+                </div>
+                <div className="item-meta">
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      color: "#16a34a",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {c.active_points ?? (c.loyalty_points % 10)} active pts
+                  </span>
+                  {(c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)) > 0 && (
+                    <span
+                      style={{
+                        fontSize: "0.76rem",
+                        color: "#d97706",
+                        fontWeight: 700,
+                      }}
+                    >
+                      🎟️ {c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)} draw
+                    </span>
+                  )}
+                  {c.dues > 0 && (
+                    <span
+                      style={{
+                        fontSize: "0.76rem",
+                        color: "#b91c1c",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Due: ₹{c.dues.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {customerPhone.trim() && !selectedCustomer && (
+              <div
+                className="dropdown-item"
+                style={{
+                  backgroundColor: "#e6f4ea",
+                  color: "#137333",
+                  fontWeight: 600,
+                }}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setIsPhoneDropdownOpen(false)}
+              >
+                <div className="item-info">
+                  <span className="dropdown-title" style={{ color: "#137333" }}>
+                    + Use Phone: "{customerPhone.trim()}"
+                  </span>
+                  <span className="dropdown-sub" style={{ color: "#1e8e3e" }}>
+                    Will be linked to customer bill
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="form-group">
@@ -310,13 +509,23 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
         >
           <div>
             <div style={{ fontWeight: 700, color: "#103c6b" }}>
-              Selected: {selectedCustomer.name} ({selectedCustomer.phone})
+              Selected: #{selectedCustomer.id} - {selectedCustomer.name} ({selectedCustomer.phone})
             </div>
             <div style={{ color: "#4d5c6d" }}>
-              Points:{" "}
+              Active:{" "}
+              <strong style={{ color: "#16a34a" }}>
+                {selectedCustomer.active_points ?? (selectedCustomer.loyalty_points % 10)} pts
+              </strong>
+              {" | "}
+              Lifetime:{" "}
               <strong style={{ color: "#0066cc" }}>
                 {selectedCustomer.loyalty_points} pts
               </strong>
+              {(selectedCustomer.lucky_draw_count ?? Math.floor(selectedCustomer.loyalty_points / 10)) > 0 && (
+                <span style={{ marginLeft: "8px", color: "#d97706", fontWeight: 700 }}>
+                  | 🎟️ {selectedCustomer.lucky_draw_count ?? Math.floor(selectedCustomer.loyalty_points / 10)} Draw(s)
+                </span>
+              )}
               {selectedCustomer.dues > 0 && (
                 <span
                   style={{

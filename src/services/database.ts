@@ -284,6 +284,8 @@ async function initTables(db: Database) {
       grand_total REAL NOT NULL,
       payment_mode TEXT NOT NULL,
       marketing_person_id INTEGER,
+      customer_id INTEGER,
+      loyalty_points REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (marketing_person_id) REFERENCES marketing(id) ON DELETE SET NULL
     );
@@ -365,6 +367,7 @@ async function initTables(db: Database) {
       address TEXT,
       purchase_item_id INTEGER,
       loyalty_points REAL DEFAULT 0,
+      lucky_draw_used INTEGER DEFAULT 0,
       dues REAL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (purchase_item_id) REFERENCES products(id) ON DELETE SET NULL
@@ -394,6 +397,8 @@ async function initTables(db: Database) {
     "ALTER TABLE products ADD COLUMN gst_rate REAL DEFAULT 0",
     "ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0",
     "ALTER TABLE sales ADD COLUMN marketing_person_id INTEGER",
+    "ALTER TABLE sales ADD COLUMN loyalty_points REAL DEFAULT 0",
+    "ALTER TABLE sales ADD COLUMN customer_id INTEGER",
     "ALTER TABLE sale_items ADD COLUMN mrp REAL DEFAULT 0",
     "ALTER TABLE sale_items ADD COLUMN invoice_no TEXT",
     "ALTER TABLE purchase_items ADD COLUMN batch_no TEXT",
@@ -402,6 +407,7 @@ async function initTables(db: Database) {
     "ALTER TABLE purchase_items ADD COLUMN hsn_code TEXT",
     "ALTER TABLE customers ADD COLUMN purchase_item_id INTEGER",
     "ALTER TABLE customers ADD COLUMN loyalty_points REAL DEFAULT 0",
+    "ALTER TABLE customers ADD COLUMN lucky_draw_used INTEGER DEFAULT 0",
     "ALTER TABLE customers ADD COLUMN dues REAL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN store_id INTEGER",
     "ALTER TABLE stores ADD COLUMN setup_cost REAL DEFAULT 0",
@@ -448,6 +454,13 @@ async function initTables(db: Database) {
     `);
   } catch {
     // Column or matching sales might not be available yet
+  }
+
+  // Ensure all existing customer names are uppercase
+  try {
+    await db.execute("UPDATE customers SET name = UPPER(name) WHERE name IS NOT NULL");
+  } catch {
+    // ignore
   }
 
   // Drop extra tables created previously

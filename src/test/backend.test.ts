@@ -39,6 +39,7 @@ import {
   updateCustomer,
   deleteCustomer,
   settleCustomerDues,
+  updateCustomerLuckyDrawUsed,
   getCustomerStats,
   fetchCustomerSales,
   fetchSaleItems,
@@ -916,7 +917,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       let customers = await fetchCustomers();
       expect(customers.length).toBe(1);
-      expect(customers[0].name).toBe("Amit Patel");
+      expect(customers[0].name).toBe("AMIT PATEL");
       expect(customers[0].phone).toBe("9876543210");
       expect(customers[0].address).toBe("123 Park Street, Kolkata");
       expect(customers[0].loyalty_points).toBe(0);
@@ -986,9 +987,12 @@ describe("Retail Sathi Backend Logic Tests", () => {
       const customers = await fetchCustomers();
       expect(customers.length).toBe(1);
       const rahul = customers[0];
-      expect(rahul.name).toBe("Rahul Sharma");
+      expect(rahul.name).toBe("RAHUL SHARMA");
       expect(rahul.total_spent).toBe(1000);
-      expect(rahul.loyalty_points).toBe(100); // ₹1000 purchase = 100 pts
+      expect(rahul.loyalty_points).toBe(10); // ₹1000 purchase = 10 lifetime pts
+      expect(rahul.active_points).toBe(0); // Resets at multiples of 10
+      expect(rahul.lucky_draw_used).toBe(0);
+      expect(rahul.lucky_draw_count).toBe(1); // 10 pts / 10 = 1 lucky draw entry
       expect(rahul.dues).toBe(1000); // Recorded dues from Credit/Due sale
       expect(rahul.purchase_item_name).toBe("Premium Rice 10kg");
 
@@ -1004,7 +1008,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       const stats = await getCustomerStats();
       expect(stats.totalCustomers).toBe(1);
-      expect(stats.totalLoyaltyPoints).toBe(100);
+      expect(stats.totalLoyaltyPoints).toBe(10);
       expect(stats.totalDues).toBe(1000);
 
       // 4. Test auto-creation of a BRAND NEW customer during POS sale checkout
@@ -1027,25 +1031,125 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       const updatedCustomers = await fetchCustomers();
       expect(updatedCustomers.length).toBe(2);
-      const sneha = updatedCustomers.find((c) => c.name === "Sneha Kapur");
+      const sneha = updatedCustomers.find((c) => c.name === "SNEHA KAPUR");
       expect(sneha).not.toBeUndefined();
       expect(sneha?.phone).toBe("9988776655");
       expect(sneha?.dues).toBe(500);
-      expect(sneha?.loyalty_points).toBe(50); // ₹500 purchase = 50 points
+      expect(sneha?.loyalty_points).toBe(5); // ₹500 purchase = 5 points
+      expect(sneha?.active_points).toBe(5); // 5 points active
+      expect(sneha?.lucky_draw_used).toBe(0);
+      expect(sneha?.lucky_draw_count).toBe(0); // Not yet eligible (requires 10 points)
 
       // 5. Test partial dues settlement (Clear ₹200 out of ₹500 dues for Sneha)
       await settleCustomerDues(sneha!.id, 200);
       let refreshedCustomers = await fetchCustomers();
-      let snehaRefreshed = refreshedCustomers.find((c) => c.name === "Sneha Kapur");
+      let snehaRefreshed = refreshedCustomers.find((c) => c.name === "SNEHA KAPUR");
       expect(snehaRefreshed?.dues).toBe(300);
 
       // 6. Test full dues settlement (Clear remaining dues)
       await settleCustomerDues(sneha!.id);
       refreshedCustomers = await fetchCustomers();
-      snehaRefreshed = refreshedCustomers.find((c) => c.name === "Sneha Kapur");
+      snehaRefreshed = refreshedCustomers.find((c) => c.name === "SNEHA KAPUR");
       expect(snehaRefreshed?.dues).toBe(0);
 
+      // 7. Test lucky draw usage management
+      await updateCustomerLuckyDrawUsed(rahul.id, 1);
+      refreshedCustomers = await fetchCustomers();
+      const rahulRefreshed = refreshedCustomers.find((c) => c.id === rahul.id);
+      expect(rahulRefreshed?.lucky_draw_used).toBe(1);
+      expect(rahulRefreshed?.lucky_draw_count).toBe(0); // 1 earned - 1 used = 0 eligible
+
       console.log("customer loyalty points and dues calculation test passed!");
+    });
+
+    it("should show updated loyalty points on receipt for existing customer (45 + 8 = 53 pts) and new customer (8 pts)", async () => {
+      // 1. Existing customer already in database with 45 loyalty points
+      const custId = await createCustomer({
+        name: "VIKRAM SINGH",
+        phone: "9876500001",
+        loyalty_points: 45,
+      });
+
+      const initialCust = await fetchCustomers();
+      const vikramBefore = initialCust.find((c) => c.id === custId);
+      expect(vikramBefore?.loyalty_points).toBe(45);
+
+      // Create a test product: ₹100 each
+      const prod = await createProduct({
+        name: "Test Grocery Item",
+        category: "Groceries",
+        price: 100,
+        cost_price: 70,
+        stock: 50,
+        unit: "pcs",
+        barcode: "990011223344",
+      });
+
+      // Existing customer purchases 8 units = ₹800 (gains 8 points)
+      const vikramSale = await createSale({
+        customer_name: "VIKRAM SINGH",
+        customer_phone: "9876500001",
+        payment_mode: "Cash",
+        paid_amount: 800,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Test Grocery Item",
+            barcode: "990011223344",
+            price: 100,
+            quantity: 8,
+          },
+        ],
+      });
+
+      // Updated points and customer ID on receipt/bill should be 53 (45 + 8) and custId
+      expect(vikramSale.loyalty_points).toBe(53);
+      expect(vikramSale.points_earned).toBe(8);
+      expect(vikramSale.customer_id).toBe(custId);
+
+      // Verify customer in database is updated to 53 points
+      const customersAfterVikram = await fetchCustomers();
+      const vikramAfter = customersAfterVikram.find((c) => c.id === custId);
+      expect(vikramAfter?.loyalty_points).toBe(53);
+
+      // Verify fetching sale details preserves 53 loyalty points and customer ID
+      const fetchedVikramSale = await fetchSaleDetails(vikramSale.id);
+      expect(fetchedVikramSale?.loyalty_points).toBe(53);
+      expect(fetchedVikramSale?.customer_id).toBe(custId);
+
+      // 2. New customer: not previously in database
+      // Purchases 8 units = ₹800 (gains 8 points)
+      const newCustSale = await createSale({
+        customer_name: "PRIYA SHARMA",
+        customer_phone: "9876500002",
+        payment_mode: "Cash",
+        paid_amount: 800,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Test Grocery Item",
+            barcode: "990011223344",
+            price: 100,
+            quantity: 8,
+          },
+        ],
+      });
+
+      // Bill should print current loyalty points gained: 8 points
+      expect(newCustSale.loyalty_points).toBe(8);
+      expect(newCustSale.points_earned).toBe(8);
+
+      // Verify newly created customer in database has 8 points
+      const customersAfterPriya = await fetchCustomers();
+      const priya = customersAfterPriya.find((c) => c.phone === "9876500002");
+      expect(priya).not.toBeUndefined();
+      expect(priya?.loyalty_points).toBe(8);
+      expect(newCustSale.customer_id).toBe(priya?.id);
+
+      // Verify fetching sale details preserves 8 loyalty points and customer ID
+      const fetchedPriyaSale = await fetchSaleDetails(newCustSale.id);
+      expect(fetchedPriyaSale?.loyalty_points).toBe(8);
+      expect(fetchedPriyaSale?.customer_id).toBe(priya?.id);
     });
   });
 

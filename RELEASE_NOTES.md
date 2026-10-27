@@ -1,3 +1,39 @@
+# Retail Sathi v0.2.8 - Receipt Customer ID & Loyalty Points, Exact Customer Search
+
+### 🚀 Key Features & Enhancements
+- **Updated Post-Sale Loyalty Points on Receipt**:
+  - Automatically calculates and prints the customer's updated total loyalty points on bills and receipts.
+  - Existing customers with previous points (e.g. 45 points) receiving extra points on a new purchase (e.g. 8 points) now print the updated total (e.g. 53 points) on both physical thermal receipts and digital invoices.
+  - New customers enrolled at checkout receive and print their current earned loyalty points on their receipt.
+  - Thermal ESC/POS receipts and review modals display itemized points earned (+X pts) and the updated total balance.
+- **Customer ID on Receipts & Invoices**:
+  - Automatically prints `Customer ID: #<id>` on thermal ESC/POS receipts, invoice previews, and checkout review modals.
+  - Seamlessly links customer ID to sales history and historical invoice re-prints.
+- **Exact Customer Search by Customer ID & Searchable Phone**:
+  - In POS billing, Customer Name search supports exact Customer ID matching (e.g. typing `78` or `#78` matches only Customer #78, preventing false positives from partial phone digits).
+  - Searchable Customer Phone field with auto-complete dropdown, allowing cashiers to search by phone prefix, customer name, or customer ID and auto-fill customer information in one click.
+
+---
+
+# Retail Sathi v0.2.7 - Customer Loyalty Points, Lucky Draw Tracker & Uppercase Normalization
+
+### 🚀 Key Features & Enhancements
+- **Updated Loyalty Points Formula (1 pt per ₹100)**:
+  - Adjusted loyalty point accrual to **1 point for every ₹100 spent** across all sales.
+  - Automatically recalculates and updates existing customer points retroactively based on their purchase history.
+- **Active Points & Lifetime Points Architecture**:
+  - Re-labeled total cumulative points as **Lifetime Points**.
+  - Added **Active Points** tracking (`points % 10`) that resets every 10 points.
+- **Interactive Lucky Draw Management**:
+  - Added **Eligible Lucky Draw** counter granting 1 draw entry every time 10 points are accumulated.
+  - Added interactive **Lucky Draw Used** controls in the Customer Directory with real-time `+` / `-` adjustments.
+  - Automatically reconciles remaining eligible draws as `floor(Lifetime Points / 10) - Used Draws`.
+- **Customer Name Uppercase Normalization**:
+  - All customer names are now permanently normalized to **UPPERCASE** upon creation, editing, and POS billing.
+  - Added startup migration to automatically convert all legacy customer records to uppercase.
+
+---
+
 # Retail Sathi v0.2.6 - Inventory Reorder Sheet & Sales Payment KPIs
 
 ### 🚀 Key Features & Enhancements

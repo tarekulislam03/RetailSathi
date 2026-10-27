@@ -14,6 +14,7 @@ import {
   getDevicePrinterSettings,
   saveDevicePrinterSettings,
 } from "../../../services/deviceSettingsService";
+import { getDb } from "../../../services/database";
 
 interface ReceiptModalProps {
   sale: Sale;
@@ -48,8 +49,49 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     message?: string;
   }>({ type: "idle" });
 
+  const [customerLoyaltyPoints, setCustomerLoyaltyPoints] = useState<number | undefined>(
+    sale.loyalty_points
+  );
+  const [customerIdState, setCustomerIdState] = useState<number | undefined>(
+    sale.customer_id ?? undefined
+  );
+
   const hasAutoPrintedRef = useRef(false);
   const isPrintingRef = useRef(false);
+
+  useEffect(() => {
+    if (sale.loyalty_points !== undefined) {
+      setCustomerLoyaltyPoints(sale.loyalty_points);
+    }
+    if (sale.customer_id) {
+      setCustomerIdState(sale.customer_id);
+    }
+    const phone = sale.customer_phone?.trim();
+    const name = sale.customer_name?.trim();
+    if (
+      (!sale.customer_id || sale.loyalty_points === undefined) &&
+      (phone || (name && name.toLowerCase() !== "walk-in customer"))
+    ) {
+      getDb().then(async (db) => {
+        try {
+          const rows = await db.select<{ id: number; loyalty_points: number }[]>(
+            "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+            [phone || "", name || ""]
+          );
+          if (rows.length > 0) {
+            if (!sale.customer_id) {
+              setCustomerIdState(rows[0].id);
+            }
+            if (sale.loyalty_points === undefined) {
+              setCustomerLoyaltyPoints(Number(rows[0].loyalty_points) || 0);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      });
+    }
+  }, [sale]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -76,7 +118,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       const activePrinter = targetPrinter !== undefined ? targetPrinter : selectedPrinter;
       const activeWidth = targetPaperWidth !== undefined ? targetPaperWidth : paperWidth;
 
-      const res = await printReceiptEscPos(sale, {
+      const saleToPrint: Sale = {
+        ...sale,
+        customer_id: sale.customer_id ?? customerIdState,
+        loyalty_points: sale.loyalty_points ?? customerLoyaltyPoints,
+      };
+
+      const res = await printReceiptEscPos(saleToPrint, {
         printerName: activePrinter || undefined,
         paperWidth: activeWidth,
         storeInfo: activeStore || undefined,
@@ -307,6 +355,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 Customer
               </span>
               <strong style={{ color: "#0f172a" }}>{sale.customer_name || "Walk-in Customer"}</strong>
+              {(sale.customer_id ?? customerIdState) ? (
+                <span style={{ display: "block", color: "#0284c7", fontSize: "0.76rem", fontWeight: 700 }}>
+                  Customer ID: #{sale.customer_id ?? customerIdState}
+                </span>
+              ) : null}
               {sale.customer_phone && (
                 <span style={{ display: "block", color: "#64748b", fontSize: "0.76rem" }}>
                   {sale.customer_phone}
@@ -362,6 +415,22 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 {(sale.due_amount || 0) > 0 ? `Due: ₹${sale.due_amount?.toFixed(2)}` : "Paid in Full"}
               </span>
             </div>
+
+            {(sale.loyalty_points !== undefined || customerLoyaltyPoints !== undefined) && (
+              <div>
+                <span style={{ color: "#64748b", display: "block", fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700 }}>
+                  Loyalty Points
+                </span>
+                <strong style={{ color: "#0066cc" }}>
+                  {(sale.loyalty_points ?? customerLoyaltyPoints) || 0} pts
+                </strong>
+                {sale.points_earned !== undefined && sale.points_earned > 0 && (
+                  <span style={{ display: "block", color: "#16a34a", fontSize: "0.76rem" }}>
+                    (+{sale.points_earned} earned)
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Items Summary Table */}
@@ -496,6 +565,31 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               >
                 <span>Remaining Balance (Due):</span>
                 <span>₹{sale.due_amount.toFixed(2)}</span>
+              </div>
+            )}
+
+            {(sale.loyalty_points !== undefined || customerLoyaltyPoints !== undefined) && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginTop: "8px",
+                  paddingTop: "8px",
+                  borderTop: "1px dashed #cbd5e1",
+                  fontSize: "0.85rem",
+                  color: "#0369a1",
+                  fontWeight: 600,
+                }}
+              >
+                <span>Total Loyalty Points:</span>
+                <span style={{ fontWeight: 700 }}>
+                  {(sale.loyalty_points ?? customerLoyaltyPoints) || 0} pts
+                  {sale.points_earned !== undefined && sale.points_earned > 0 && (
+                    <span style={{ color: "#16a34a", marginLeft: "4px" }}>
+                      (+{sale.points_earned} this bill)
+                    </span>
+                  )}
+                </span>
               </div>
             )}
           </div>

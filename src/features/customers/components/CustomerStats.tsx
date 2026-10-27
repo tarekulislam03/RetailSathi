@@ -14,7 +14,7 @@ export const CustomerStats: React.FC<CustomerStatsProps> = ({ stats }) => {
       </div>
 
       <div className="stat-card">
-        <span className="stat-label">TOTAL LOYALTY POINTS</span>
+        <span className="stat-label">TOTAL LIFETIME POINTS</span>
         <span className="stat-value" style={{ color: "#0066cc" }}>
           {stats.totalLoyaltyPoints.toLocaleString("en-IN", {
             maximumFractionDigits: 2,
