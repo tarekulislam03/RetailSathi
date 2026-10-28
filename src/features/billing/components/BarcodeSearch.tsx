@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { Product } from "../../inventory/types";
+import { BatchSelectionModal } from "./BatchSelectionModal";
 
 interface BarcodeSearchProps {
   products: Product[];
@@ -25,6 +26,8 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
 }) => {
   const [quickSearch, setQuickSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [matchingBatches, setMatchingBatches] = useState<Product[]>([]);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const focusSearch = () => {
@@ -141,9 +144,15 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && quickSearch.trim()) {
+    if (e.key === "Enter") {
+      const rawInput = (e.currentTarget.value || quickSearch || "").trim();
+      if (!rawInput) return;
+
       e.preventDefault();
-      const term = quickSearch.trim().toLowerCase();
+      e.stopPropagation();
+      setShowDropdown(false);
+
+      const term = rawInput.toLowerCase();
       const now = Date.now();
 
       // Ignore rapid duplicate scan / Enter keybounce (e.g. within 250ms for same term)
@@ -153,101 +162,205 @@ export const BarcodeSearch: React.FC<BarcodeSearchProps> = ({
       lastScanTimeRef.current = now;
       lastScanTermRef.current = term;
 
-      const matched =
-        products.find(
-          (p) => p.barcode.toLowerCase() === term || p.name.toLowerCase() === term || (p.batch_no && p.batch_no.toLowerCase() === term)
-        ) ||
-        products.find(
-          (p) =>
-            p.barcode.toLowerCase().includes(term) ||
-            p.name.toLowerCase().includes(term) ||
-            (p.batch_no && p.batch_no.toLowerCase().includes(term))
-        );
+      // 1. Check exact barcode match first
+      const exactBarcodeMatches = products.filter(
+        (p) =>
+          p.barcode &&
+          (p.barcode.trim().toLowerCase() === term ||
+            p.barcode.trim().replace(/^0+/, "").toLowerCase() === term.replace(/^0+/, ""))
+      );
 
-      if (matched) {
-        onAddToCart(matched);
+      // If multiple batches exist for the exact barcode scanned, show dedicated batch selection modal!
+      if (exactBarcodeMatches.length > 1) {
+        setMatchingBatches(exactBarcodeMatches);
+        setIsBatchModalOpen(true);
+        setShowDropdown(false);
         setQuickSearch("");
         if (searchInputRef.current) {
           searchInputRef.current.value = "";
         }
-        setShowDropdown(false);
-      } else {
-        onError(`No product found for barcode / batch / name: "${quickSearch}"`);
+        return;
       }
+
+      if (exactBarcodeMatches.length === 1) {
+        selectProduct(exactBarcodeMatches[0]);
+        return;
+      }
+
+      // 2. Check exact batch_no match
+      const exactBatchMatches = products.filter(
+        (p) => p.batch_no && p.batch_no.trim().toLowerCase() === term
+      );
+      if (exactBatchMatches.length === 1) {
+        selectProduct(exactBatchMatches[0]);
+        return;
+      }
+
+      // 3. Check exact product name match
+      const exactNameMatches = products.filter(
+        (p) => p.name.trim().toLowerCase() === term
+      );
+      if (exactNameMatches.length > 1) {
+        setMatchingBatches(exactNameMatches);
+        setIsBatchModalOpen(true);
+        setShowDropdown(false);
+        setQuickSearch("");
+        if (searchInputRef.current) {
+          searchInputRef.current.value = "";
+        }
+        return;
+      }
+      if (exactNameMatches.length === 1) {
+        selectProduct(exactNameMatches[0]);
+        return;
+      }
+
+      // 4. Fallback: partial match across barcode, name, or batch
+      const partialMatches = products.filter(
+        (p) =>
+          (p.barcode && p.barcode.toLowerCase().includes(term)) ||
+          p.name.toLowerCase().includes(term) ||
+          (p.batch_no && p.batch_no.toLowerCase().includes(term))
+      );
+
+      if (partialMatches.length > 1) {
+        const uniqueBarcodes = new Set(
+          partialMatches.map((p) => p.barcode?.trim().toLowerCase()).filter(Boolean)
+        );
+        const uniqueNames = new Set(
+          partialMatches.map((p) => p.name.trim().toLowerCase())
+        );
+        // If all partial matches represent the same product or barcode with multiple batches, prompt batch selection
+        if (uniqueBarcodes.size === 1 || uniqueNames.size === 1) {
+          setMatchingBatches(partialMatches);
+          setIsBatchModalOpen(true);
+          setShowDropdown(false);
+          setQuickSearch("");
+          if (searchInputRef.current) {
+            searchInputRef.current.value = "";
+          }
+          return;
+        }
+        setShowDropdown(true);
+        return;
+      }
+
+      if (partialMatches.length === 1) {
+        selectProduct(partialMatches[0]);
+        return;
+      }
+
+      onError(`No product found for barcode / batch / name: "${rawInput}"`);
       focusSearch();
     }
   }
 
-  return (
-    <div className="card pos-search-card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-        <label htmlFor="quickSearch" className="font-semibold" style={{ margin: 0 }}>
-          Scan Barcode or Select Product:
-        </label>
-        {todayBillsCount !== undefined && (
-          <div
-            style={{
-              fontSize: "0.78rem",
-              fontWeight: 700,
-              color: "#103c6b",
-              background: "linear-gradient(to bottom, #edf5fe 0%, #d2e4fc 100%)",
-              border: "1px solid #7092be",
-              padding: "2px 8px",
-              borderRadius: "3px",
-              boxShadow: "inset 0 1px 0 #ffffff",
-            }}
-          >
-            Today's Bills: <strong>{todayBillsCount}</strong>
-          </div>
-        )}
-      </div>
-      <div className="search-dropdown-wrapper">
-        <input
-          ref={searchInputRef}
-          id="quickSearch"
-          type="text"
-          className="search-input barcode-search"
-          placeholder="Scan Barcode, batch no, or type product name to search..."
-          value={quickSearch}
-          onChange={(e) => {
-            setQuickSearch(e.target.value);
-            setShowDropdown(true);
-          }}
-          onFocus={() => setShowDropdown(true)}
-          onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-          onKeyDown={handleKeyDown}
-          autoFocus
-        />
+  function handleBatchSelected(selectedBatch: Product) {
+    setIsBatchModalOpen(false);
+    setMatchingBatches([]);
+    selectProduct(selectedBatch);
+  }
 
-        {showDropdown && searchMatches.length > 0 && (
-          <div className="search-dropdown">
-            {searchMatches.map((p) => (
-              <div
-                key={p.id}
-                className={`dropdown-item ${p.stock <= 0 ? "out-of-stock" : ""}`}
-                onMouseDown={() => selectProduct(p)}
-              >
-                <div className="item-info">
-                  <span className="dropdown-title">{p.name}</span>
-                  <span className="dropdown-sub">
-                    Barcode: {p.barcode || "N/A"} | Batch: {p.batch_no || "N/A"} | Category: {p.category}
-                  </span>
+  function handleBatchModalClose() {
+    setIsBatchModalOpen(false);
+    setMatchingBatches([]);
+    focusSearch();
+  }
+
+  return (
+    <>
+      <div className="card pos-search-card">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+          <label htmlFor="quickSearch" className="font-semibold" style={{ margin: 0 }}>
+            Scan Barcode or Select Product:
+          </label>
+          {todayBillsCount !== undefined && (
+            <div
+              style={{
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                color: "#103c6b",
+                background: "linear-gradient(to bottom, #edf5fe 0%, #d2e4fc 100%)",
+                border: "1px solid #7092be",
+                padding: "2px 8px",
+                borderRadius: "3px",
+                boxShadow: "inset 0 1px 0 #ffffff",
+              }}
+            >
+              Today's Bills: <strong>{todayBillsCount}</strong>
+            </div>
+          )}
+        </div>
+        <div className="search-dropdown-wrapper">
+          <input
+            ref={searchInputRef}
+            id="quickSearch"
+            type="text"
+            className="search-input barcode-search"
+            placeholder="Scan Barcode, batch no, or type product name to search..."
+            value={quickSearch}
+            onChange={(e) => {
+              const val = e.target.value;
+              setQuickSearch(val);
+              if (!isBatchModalOpen) {
+                setShowDropdown(Boolean(val.trim()));
+              }
+            }}
+            onFocus={() => {
+              if (!isBatchModalOpen && quickSearch.trim()) {
+                setShowDropdown(true);
+              }
+            }}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+            onKeyDown={handleKeyDown}
+            autoFocus
+          />
+
+          {showDropdown && !isBatchModalOpen && searchMatches.length > 0 && (
+            <div className="search-dropdown">
+              {searchMatches.map((p) => (
+                <div
+                  key={p.id}
+                  className={`dropdown-item ${p.stock <= 0 ? "out-of-stock" : ""}`}
+                  onMouseDown={() => selectProduct(p)}
+                >
+                  <div className="item-info">
+                    <span className="dropdown-title">{p.name}</span>
+                    <span className="dropdown-sub">
+                      Barcode: {p.barcode || "N/A"} | Batch: {p.batch_no || "N/A"} | Category: {p.category}
+                    </span>
+                  </div>
+                  <div className="item-meta" style={{ textAlign: "right" }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "flex-end" }}>
+                      {p.mrp && p.mrp > p.price ? (
+                        <span style={{ fontSize: "0.75rem", color: "#64748b", textDecoration: "line-through" }}>
+                          MRP: ₹{p.mrp.toFixed(2)}
+                        </span>
+                      ) : null}
+                      <span className="dropdown-price">₹{p.price.toFixed(2)}</span>
+                    </div>
+                    <span
+                      className={`dropdown-stock ${
+                        p.stock <= p.reorder_threshold ? "low" : ""
+                      }`}
+                    >
+                      Stock: {p.stock}
+                    </span>
+                  </div>
                 </div>
-                <div className="item-meta">
-                  <span className="dropdown-price">₹{p.price.toFixed(2)}</span>
-                  <span
-                    className={`dropdown-stock ${
-                      p.stock <= p.reorder_threshold ? "low" : ""
-                    }`}
-                  >
-                    Stock: {p.stock}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      <BatchSelectionModal
+        isOpen={isBatchModalOpen}
+        batches={matchingBatches}
+        searchTerm={quickSearch}
+        onSelectBatch={handleBatchSelected}
+        onClose={handleBatchModalClose}
+      />
+    </>
   );
 };

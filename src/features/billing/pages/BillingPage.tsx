@@ -295,6 +295,7 @@ export const BillingPage: React.FC = () => {
           product_id: c.product.id,
           product_name: c.product.name,
           barcode: c.product.barcode,
+          batch_no: c.product.batch_no || "",
           price: c.product.price,
           quantity: c.quantity,
           mrp: c.product.mrp || c.product.price,
@@ -541,6 +542,7 @@ export const BillingPage: React.FC = () => {
       {isAddProductOpen && (
         <ProductModal
           editingProduct={null}
+          existingProducts={products}
           title="Add Product to Inventory & Cart"
           submitButtonText="Save to Inventory & Add to Cart"
           onSave={handleSaveNewProduct}

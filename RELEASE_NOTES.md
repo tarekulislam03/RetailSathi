@@ -1,3 +1,22 @@
+# Retail Sathi v0.2.9 - Multi-Batch Barcode Support & Dedicated POS Batch Selector
+
+### 🚀 Key Features & Enhancements
+- **Same Barcode Multi-Batch Support in Inventory**:
+  - Products sharing the same barcode with the same product name can now coexist with distinct batch numbers (`batch_no`), MRPs, cost prices, selling rates, and stock levels.
+  - Strict batch uniqueness validation: duplicate batches for the same barcode or conflicting product names sharing a barcode are automatically validated and prevented.
+  - Smart Inventory Entry: Entering or scanning an existing barcode in the product modal automatically pre-fills the product name, category, HSN code, and GST rate, and displays active batches.
+- **Dedicated POS Multi-Batch Selection Dialog**:
+  - When scanning a barcode that exists across multiple batches with different MRPs or selling rates, Retail Sathi immediately opens a dedicated Batch Selection dialog.
+  - Eliminates auto-selecting the first item and prevents interference from standard product search dropdowns.
+  - Built-in hardware scanner bounce protection: shields against trailing carriage-return/auto-enter pulses sent by barcode scanners.
+  - Shows complete batch details: Batch No, MRP, Selling Rate, Available Stock, and FIFO Stock Status (`New Stock` vs `Old Stock`).
+  - Fast keyboard shortcuts: Cashiers can press `1`, `2`, `3` to instantly pick and add a batch to the cart, or use arrow keys and `Enter`.
+- **Cart & Sale Batch Visibility**:
+  - The cart table now displays the selected batch tag directly beneath the item name.
+  - Stored batch numbers in `sale_items` ensure exact inventory deductions and accurate receipt records.
+
+---
+
 # Retail Sathi v0.2.8 - Receipt Customer ID & Loyalty Points, Exact Customer Search
 
 ### 🚀 Key Features & Enhancements

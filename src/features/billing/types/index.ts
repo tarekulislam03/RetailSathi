@@ -34,6 +34,7 @@ export interface SaleItem {
   product_id: number;
   product_name: string;
   barcode: string;
+  batch_no?: string;
   price: number;
   quantity: number;
   total_price: number;
@@ -57,6 +58,7 @@ export interface CreateSaleInput {
     product_id: number;
     product_name: string;
     barcode: string;
+    batch_no?: string;
     price: number;
     quantity: number;
     mrp?: number;
@@ -80,6 +82,7 @@ export interface UpdateSaleInput {
     product_id: number;
     product_name: string;
     barcode: string;
+    batch_no?: string;
     price: number;
     quantity: number;
     mrp?: number;

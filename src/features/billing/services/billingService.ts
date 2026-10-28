@@ -125,14 +125,15 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
     const itemTotal = item.price * item.quantity;
     const itemMrp = item.mrp !== undefined && item.mrp > 0 ? item.mrp : item.price;
     await db.execute(
-      `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, price, quantity, total_price, mrp)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, batch_no, price, quantity, total_price, mrp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         saleId,
         invoiceNo,
         item.product_id,
         item.product_name,
         item.barcode || "",
+        item.batch_no || "",
         item.price,
         item.quantity,
         itemTotal,
@@ -159,6 +160,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
       product_id: item.product_id,
       product_name: item.product_name,
       barcode: item.barcode || "",
+      batch_no: item.batch_no || "",
       price: item.price,
       quantity: item.quantity,
       total_price: itemTotal,
@@ -563,14 +565,15 @@ export async function updateSale(
     const itemTotal = item.price * item.quantity;
     const itemMrp = item.mrp !== undefined && item.mrp > 0 ? item.mrp : item.price;
     await db.execute(
-      `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, price, quantity, total_price, mrp)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, batch_no, price, quantity, total_price, mrp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         saleId,
         oldSale.invoice_no,
         item.product_id,
         item.product_name,
         item.barcode || "",
+        item.batch_no || "",
         item.price,
         item.quantity,
         itemTotal,
@@ -583,6 +586,7 @@ export async function updateSale(
       product_id: item.product_id,
       product_name: item.product_name,
       barcode: item.barcode || "",
+      batch_no: item.batch_no || "",
       price: item.price,
       quantity: item.quantity,
       total_price: itemTotal,
@@ -661,15 +665,26 @@ export async function deleteSale(saleId: number): Promise<void> {
       }
     }
 
-    // Attempt 2: fallback by barcode if product_id was not matched
+    // Attempt 2: fallback by barcode (and batch_no if available) if product_id was not matched
     if (!restored && item.barcode && item.barcode.trim()) {
       try {
-        const res = await db.execute(
-          "UPDATE products SET stock = stock + $1 WHERE barcode = $2",
-          [item.quantity, item.barcode.trim()]
-        );
-        if (res && res.rowsAffected && res.rowsAffected > 0) {
-          restored = true;
+        if (item.batch_no && item.batch_no.trim()) {
+          const res = await db.execute(
+            "UPDATE products SET stock = stock + $1 WHERE barcode = $2 AND batch_no = $3",
+            [item.quantity, item.barcode.trim(), item.batch_no.trim()]
+          );
+          if (res && res.rowsAffected && res.rowsAffected > 0) {
+            restored = true;
+          }
+        }
+        if (!restored) {
+          const res = await db.execute(
+            "UPDATE products SET stock = stock + $1 WHERE barcode = $2",
+            [item.quantity, item.barcode.trim()]
+          );
+          if (res && res.rowsAffected && res.rowsAffected > 0) {
+            restored = true;
+          }
         }
       } catch (err) {
         console.error(`Failed to revert stock by barcode ${item.barcode}:`, err);
