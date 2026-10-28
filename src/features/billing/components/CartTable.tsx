@@ -233,7 +233,32 @@ const CartTableRow: React.FC<CartTableRowProps> = ({
 
   return (
     <tr className={isLastItem ? "last-cart-item" : ""}>
-      <td className="font-semibold">{item.product.name}</td>
+      <td className="font-semibold">
+        {item.product.name}
+        {item.product.batch_no ? (
+          <span
+            style={{
+              display: "block",
+              fontSize: "0.72rem",
+              color: "#475569",
+              fontWeight: 500,
+              marginTop: "2px",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                padding: "1px 5px",
+                background: "#f1f5f9",
+                border: "1px solid #cbd5e1",
+                borderRadius: "3px",
+              }}
+            >
+              Batch: {item.product.batch_no}
+            </span>
+          </span>
+        ) : null}
+      </td>
       <td>
         <code className="barcode-tag">{item.product.barcode || "-"}</code>
       </td>

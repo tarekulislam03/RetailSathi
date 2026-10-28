@@ -97,6 +97,7 @@ export function createMockDatabase() {
       product_id INTEGER,
       product_name TEXT NOT NULL,
       barcode TEXT,
+      batch_no TEXT,
       price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       total_price REAL NOT NULL,

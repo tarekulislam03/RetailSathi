@@ -1,10 +1,11 @@
-import React, { useState, FormEvent, KeyboardEvent } from "react";
+import React, { useState, useMemo, FormEvent, KeyboardEvent } from "react";
 import { Product, ProductInput } from "../types";
 
 import { generateUniqueBarcode } from "../../../utils/barcodeGenerator";
 
 interface ProductModalProps {
   editingProduct: Product | null;
+  existingProducts?: Product[];
   title?: string;
   submitButtonText?: string;
   onSave: (payload: ProductInput) => Promise<void>;
@@ -13,6 +14,7 @@ interface ProductModalProps {
 
 export const ProductModal: React.FC<ProductModalProps> = ({
   editingProduct,
+  existingProducts,
   title,
   submitButtonText,
   onSave,
@@ -36,6 +38,42 @@ export const ProductModal: React.FC<ProductModalProps> = ({
   );
   const [category, setCategory] = useState(editingProduct?.category || "General");
   const [error, setError] = useState<string | null>(null);
+
+  // Check if this barcode is already registered to other products in inventory
+  const matchingBarcodeProducts = useMemo(() => {
+    const b = barcode.trim().toLowerCase();
+    if (!b) return [];
+    return (existingProducts || []).filter(
+      (p) =>
+        (!editingProduct || p.id !== editingProduct.id) &&
+        p.barcode &&
+        p.barcode.trim().toLowerCase() === b
+    );
+  }, [barcode, existingProducts, editingProduct]);
+
+  function handleBarcodeChange(val: string) {
+    setBarcode(val);
+    const b = val.trim().toLowerCase();
+    if (!b || editingProduct) return;
+    const match = (existingProducts || []).find(
+      (p) => p.barcode && p.barcode.trim().toLowerCase() === b
+    );
+    if (match) {
+      // Auto-populate name and category/HSN for same-barcode products
+      if (!name || name === match.name) {
+        setName(match.name);
+      }
+      if (!category || category === "General") {
+        setCategory(match.category || "General");
+      }
+      if (!hsnCode) {
+        setHsnCode(match.hsn_code || "");
+      }
+      if (gstRate === "0" && match.gst_rate) {
+        setGstRate(String(match.gst_rate));
+      }
+    }
+  }
 
   function handleKeyDown(e: KeyboardEvent<HTMLFormElement>) {
     if (e.key === "Enter") {
@@ -81,6 +119,27 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
     const finalBarcode = barcode.trim() || generateUniqueBarcode();
 
+    // Check barcode and batch rules in client form
+    if (matchingBarcodeProducts.length > 0) {
+      const canonical = matchingBarcodeProducts[0];
+      if (name.trim().toLowerCase() !== canonical.name.trim().toLowerCase()) {
+        setError(
+          `Barcode "${finalBarcode}" is already assigned to "${canonical.name}". Products with the same barcode must have the same name.`
+        );
+        return;
+      }
+      const targetBatch = batchNo.trim().toLowerCase();
+      const duplicateBatch = matchingBarcodeProducts.find(
+        (p) => (p.batch_no || "").trim().toLowerCase() === targetBatch
+      );
+      if (duplicateBatch) {
+        setError(
+          `A product with barcode "${finalBarcode}" and batch "${batchNo.trim() || "(empty)"}" already exists. Batch number must be unique.`
+        );
+        return;
+      }
+    }
+
     try {
       await onSave({
         barcode: finalBarcode,
@@ -115,6 +174,36 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           </button>
         </div>
 
+        {matchingBarcodeProducts.length > 0 && (
+          <div
+            style={{
+              margin: "12px 16px 0",
+              padding: "10px 14px",
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              borderRadius: "4px",
+              fontSize: "0.82rem",
+              color: "#1e40af",
+              lineHeight: 1.45,
+            }}
+          >
+            <div>
+              <strong>ℹ️ Same Barcode Product Detected:</strong> "{matchingBarcodeProducts[0].name}"
+            </div>
+            <div style={{ marginTop: "3px", color: "#2563eb" }}>
+              Existing Batches:{" "}
+              <strong>
+                {matchingBarcodeProducts
+                  .map((p) => p.batch_no || "(No Batch)")
+                  .join(", ")}
+              </strong>
+            </div>
+            <div style={{ marginTop: "2px", fontSize: "0.78rem", color: "#1d4ed8" }}>
+              Same barcode products share the product name. Please specify a <strong>unique Batch No</strong> and selling details for this batch.
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="error-banner" style={{ margin: "12px 16px 0" }}>
             <span>{error}</span>
@@ -130,7 +219,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                 id="barcode"
                 type="text"
                 value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
+                onChange={(e) => handleBarcodeChange(e.target.value)}
                 placeholder="Scan or enter barcode"
                 autoFocus
               />

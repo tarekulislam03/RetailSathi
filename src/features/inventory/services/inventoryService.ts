@@ -28,6 +28,38 @@ export async function createProduct(product: ProductInput): Promise<Product> {
   const now = getRealTime();
   const formattedDate = now.toISOString();
 
+  // Barcode and batch uniqueness validation:
+  // Same barcode can exist in inventory if product name is the same; only unique value is batch_no.
+  if (product.barcode && product.barcode.trim()) {
+    const rawBarcode = product.barcode.trim();
+    const existing = await db.select<Product[]>(
+      "SELECT * FROM products WHERE LOWER(TRIM(barcode)) = LOWER(TRIM($1))",
+      [rawBarcode]
+    );
+    if (existing && existing.length > 0) {
+      // 1. Same barcode product with same name can exist
+      const nameMismatch = existing.find(
+        (p) => p.name.trim().toLowerCase() !== product.name.trim().toLowerCase()
+      );
+      if (nameMismatch) {
+        throw new Error(
+          `Barcode "${rawBarcode}" is already registered to "${nameMismatch.name}". Products with the same barcode must have the same name.`
+        );
+      }
+
+      // 2. Only unique value is batch no
+      const targetBatch = (product.batch_no || "").trim().toLowerCase();
+      const duplicateBatch = existing.find(
+        (p) => (p.batch_no || "").trim().toLowerCase() === targetBatch
+      );
+      if (duplicateBatch) {
+        throw new Error(
+          `A product with barcode "${rawBarcode}" and batch "${product.batch_no?.trim() || "(empty)"}" already exists. Batch number must be unique.`
+        );
+      }
+    }
+  }
+
   const res = await db.execute(
     `INSERT INTO products (barcode, name, batch_no, mrp, price, cost_price, stock, hsn_code, reorder_threshold, gst_rate, category, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
@@ -50,8 +82,8 @@ export async function createProduct(product: ProductInput): Promise<Product> {
   let insertedId = res?.lastInsertId;
   if (!insertedId && product.barcode) {
     const rows = await db.select<{ id: number }[]>(
-      "SELECT id FROM products WHERE barcode = $1 ORDER BY id DESC LIMIT 1",
-      [product.barcode]
+      "SELECT id FROM products WHERE barcode = $1 AND (batch_no = $2 OR (batch_no IS NULL AND $2 = '')) ORDER BY id DESC LIMIT 1",
+      [product.barcode, product.batch_no || ""]
     );
     if (rows && rows.length > 0) {
       insertedId = rows[0].id;
@@ -80,6 +112,39 @@ export async function updateProduct(
   product: ProductInput
 ): Promise<void> {
   const db = await getDb();
+
+  // Barcode and batch uniqueness validation on update:
+  if (product.barcode && product.barcode.trim()) {
+    const rawBarcode = product.barcode.trim();
+    const existing = await db.select<Product[]>(
+      "SELECT * FROM products WHERE LOWER(TRIM(barcode)) = LOWER(TRIM($1))",
+      [rawBarcode]
+    );
+    const others = (existing || []).filter((p) => p.id !== id);
+    if (others.length > 0) {
+      // 1. Same barcode product with same name can exist
+      const nameMismatch = others.find(
+        (p) => p.name.trim().toLowerCase() !== product.name.trim().toLowerCase()
+      );
+      if (nameMismatch) {
+        throw new Error(
+          `Barcode "${rawBarcode}" is already registered to "${nameMismatch.name}". Products with the same barcode must have the same name.`
+        );
+      }
+
+      // 2. Only unique value is batch no
+      const targetBatch = (product.batch_no || "").trim().toLowerCase();
+      const duplicateBatch = others.find(
+        (p) => (p.batch_no || "").trim().toLowerCase() === targetBatch
+      );
+      if (duplicateBatch) {
+        throw new Error(
+          `A product with barcode "${rawBarcode}" and batch "${product.batch_no?.trim() || "(empty)"}" already exists. Batch number must be unique.`
+        );
+      }
+    }
+  }
+
   await db.execute(
     `UPDATE products 
      SET barcode = $1, name = $2, batch_no = $3, mrp = $4, price = $5, cost_price = $6, stock = $7, hsn_code = $8, reorder_threshold = $9, gst_rate = $10, category = $11 

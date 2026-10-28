@@ -235,6 +235,7 @@ export const InventoryPage: React.FC = () => {
       {isModalOpen && (
         <ProductModal
           editingProduct={editingProduct}
+          existingProducts={products}
           onSave={handleSaveProduct}
           onClose={() => setIsModalOpen(false)}
         />
