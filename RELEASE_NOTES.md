@@ -1,3 +1,11 @@
+# Retail Sathi v0.3.0 - Multi-Device Sync Fixes & Correct Version Display
+
+### 🚀 Key Fixes
+- **Complete Cloud Pulls (1000-row limit)**: Products, sales, sale items, customers, purchases and suppliers are now pulled in pages, so every record syncs to other devices (previously only the first 1000 rows of a table were pulled).
+- **Correct App Version Display**: The sidebar/login footer showed a stale hard-coded version (v0.2.7) even after updating. It now shows the real installed version.
+
+---
+
 # Retail Sathi v0.2.9 - Multi-Batch Barcode Support & Dedicated POS Batch Selector
 
 ### 🚀 Key Features & Enhancements

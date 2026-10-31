@@ -118,6 +118,26 @@ export async function processSyncJobs(): Promise<void> {
 }
 
 /**
+ * Supabase returns at most 1000 rows per request. Page through the whole table
+ * so large tables (products, sales, sale_items) are pulled completely.
+ */
+async function fetchAllRows(table: string, columns = "*"): Promise<{ data: any[] | null; error: any }> {
+  const PAGE = 1000;
+  const all: any[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { data: null, error };
+    all.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+  }
+  return { data: all, error: null };
+}
+
+/**
  * Pull all stores from Supabase Cloud and upsert into local SQLite.
  */
 async function pullStores(): Promise<void> {
@@ -238,7 +258,7 @@ async function pullUsers(): Promise<void> {
  * Pull all products / inventory items from Supabase Cloud into local SQLite.
  */
 async function pullProducts(): Promise<void> {
-  const { data, error } = await supabase.from("products").select("*");
+  const { data, error } = await fetchAllRows("products");
   if (error || !data || data.length === 0) return;
 
   for (const p of data) {
@@ -281,7 +301,7 @@ async function pullProducts(): Promise<void> {
  * Pull marketing personnel from Supabase Cloud into local SQLite.
  */
 async function pullMarketing(): Promise<void> {
-  const { data, error } = await supabase.from("marketing").select("*");
+  const { data, error } = await fetchAllRows("marketing");
   if (error || !data || data.length === 0) return;
 
   for (const m of data) {
@@ -312,7 +332,7 @@ async function pullMarketing(): Promise<void> {
  * Pull suppliers from Supabase Cloud into local SQLite.
  */
 async function pullSuppliers(): Promise<void> {
-  const { data, error } = await supabase.from("suppliers").select("*");
+  const { data, error } = await fetchAllRows("suppliers");
   if (error || !data || data.length === 0) return;
 
   for (const s of data) {
@@ -345,7 +365,7 @@ async function pullSuppliers(): Promise<void> {
  * Pull customers from Supabase Cloud into local SQLite.
  */
 async function pullCustomers(): Promise<void> {
-  const { data, error } = await supabase.from("customers").select("*");
+  const { data, error } = await fetchAllRows("customers");
   if (error || !data || data.length === 0) return;
 
   for (const c of data) {
@@ -378,7 +398,7 @@ async function pullCustomers(): Promise<void> {
  * Pull purchases and purchase_items from Supabase Cloud into local SQLite.
  */
 async function pullPurchases(): Promise<void> {
-  const { data: purchasesData, error: pError } = await supabase.from("purchases").select("*");
+  const { data: purchasesData, error: pError } = await fetchAllRows("purchases");
   if (!pError && purchasesData && purchasesData.length > 0) {
     for (const p of purchasesData) {
       await rawExecute(
@@ -408,7 +428,7 @@ async function pullPurchases(): Promise<void> {
     }
   }
 
-  const { data: itemsData, error: iError } = await supabase.from("purchase_items").select("*");
+  const { data: itemsData, error: iError } = await fetchAllRows("purchase_items");
   if (!iError && itemsData && itemsData.length > 0) {
     for (const it of itemsData) {
       await rawExecute(
@@ -457,7 +477,7 @@ async function pullSales(): Promise<void> {
   const db = await getDb();
 
   // 1. Fetch sales from Supabase
-  const { data: salesData, error: sError } = await supabase.from("sales").select("*");
+  const { data: salesData, error: sError } = await fetchAllRows("sales");
   if (sError || !salesData) {
     if (sError) console.warn("[SyncProcessor] Failed to pull sales:", sError);
     return;
@@ -500,7 +520,7 @@ async function pullSales(): Promise<void> {
   }
 
   // 2. Fetch sale_items from Supabase
-  const { data: saleItemsData, error: siError } = await supabase.from("sale_items").select("*");
+  const { data: saleItemsData, error: siError } = await fetchAllRows("sale_items");
   if (siError || !saleItemsData) {
     if (siError) console.warn("[SyncProcessor] Failed to pull sale_items:", siError);
     return;
