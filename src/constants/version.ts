@@ -3,6 +3,6 @@
  * This version string is displayed in the bottom-left corner of the sidebar,
  * login footer, and used across the application.
  */
-export const APP_VERSION = "0.2.7";
+export const APP_VERSION = "0.3.0";
 export const APP_NAME = "Retail Sathi";
 export const APP_DISPLAY_VERSION = `v${APP_VERSION}`;
