@@ -1,3 +1,10 @@
+# Retail Sathi v0.3.1 - Accurate Monthly Sales & GST Date Grouping
+
+### 🚀 Key Fixes
+- **Monthly Sales & Profit Date Boundary Fix**: Fixed an issue where late-evening sales at the end of a month (after 6:30 PM IST) were grouped into the next month's sales total due to UTC-tagged timestamps. Monthly sales, profit reports, and GST reports now extract the true IST transaction date directly from the invoice number (`parseSaleDate`), matching daily sales calculations.
+
+---
+
 # Retail Sathi v0.3.0 - Multi-Device Sync Fixes & Correct Version Display
 
 ### 🚀 Key Fixes

@@ -52,10 +52,8 @@ export function calculateSaleProfit(sale: Sale): number {
  * Returns YYYY-MM key for grouping sales by month matching Manage Sales & Profit report.
  */
 export function getSaleMonthKey(sale: Sale, fallbackDate: Date = new Date()): string {
-  const dateObj = sale.created_at ? new Date(sale.created_at) : null;
-  if (dateObj && !isNaN(dateObj.getTime())) {
-    return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}`;
-  }
+  // Use parseSaleDate (invoice-number first) so month matches the "today" logic
+  // and is not skewed by IST timestamps wrongly tagged as UTC.
   const parsed = parseSaleDate(sale.created_at, sale.invoice_no);
   if (parsed && !isNaN(parsed.getTime())) {
     return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
