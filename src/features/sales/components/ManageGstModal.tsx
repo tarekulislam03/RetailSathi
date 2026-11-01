@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Sale } from "../../billing/types";
 import { Pagination } from "../../../components/common/Pagination";
+import { parseSaleDate } from "../../../utils/dateUtils";
 
 interface ManageGstModalProps {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export const ManageGstModal: React.FC<ManageGstModalProps> = ({
     let year = 0;
     let monthIdx = 0;
 
-    const dateObj = s.created_at ? new Date(s.created_at) : null;
+    const dateObj = parseSaleDate(s.created_at, s.invoice_no);
     if (dateObj && !isNaN(dateObj.getTime())) {
       year = dateObj.getFullYear();
       monthIdx = dateObj.getMonth();
