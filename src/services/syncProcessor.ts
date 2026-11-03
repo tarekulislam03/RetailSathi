@@ -1,12 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { getDb, rawExecute } from "./database";
 
-const DEFAULT_SUPABASE_URL = "https://sfbzeehmjrarhprpagxy.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://icrlnkszpdeuwbqnkcwu.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmYnplZWhtanJhcmhwcnBhZ3h5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODk0NjMsImV4cCI6MjEwNDk2NTQ2M30.lENrO2VCCGEAEuiuOEB1JCzKiFDcV8fY6Nn49Pw-Cto";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imljcmxua3N6cGRldXdicW5rY3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0Nzc1NDcsImV4cCI6MjEwOTA1MzU0N30.uTEtoK02NHQX-SWP446ZusScAbL4p3C7FqsPHe2rj2I";
 
 const rawUrl = (import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL || "").trim();
-const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY || "").trim();
+const rawKey = (
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  DEFAULT_SUPABASE_ANON_KEY ||
+  ""
+).trim();
 
 export const isCloudSyncConfigured = Boolean(
   rawUrl &&
@@ -34,79 +39,188 @@ let isPulling = false;
 let syncTimeout: any = null;
 
 /**
- * Drain the sync_jobs queue one by one in strict FIFO order (lowest ID first).
- * Sends each SQL query to Supabase via exec_sql RPC.
+ * Explicit column lists per table (avoids SELECT * and reduces egress payload size).
  */
-export async function processSyncJobs(): Promise<void> {
-  if (isProcessing) return;
-  if (!isCloudSyncConfigured) return;
+const TABLE_COLUMNS = {
+  stores: "id, name, code, address, phone, email, setup_cost, amc, is_active, created_at, updated_at",
+  settings: "store_id, key, value, updated_ms",
+  users: "id, username, password_hash, full_name, role, phone, store_id, is_active, created_at, updated_at",
+  products: "id, barcode, name, batch_no, mrp, price, cost_price, stock, hsn_code, reorder_threshold, gst_rate, category, created_at",
+  marketing: "id, name, phone, area, sales, commission, created_at",
+  suppliers: "id, name, company_name, gst_no, contact_no, email, address, created_at",
+  customers: "id, name, phone, address, purchase_item_id, loyalty_points, lucky_draw_used, dues, created_at",
+  purchases: "id, supplier_name, invoice_no, purchase_date, gst_no, contact_no, total_amount, item_count, created_at",
+  purchase_items: "id, purchase_id, product_id, product_name, barcode, batch_no, hsn_code, category, purchase_price, mrp, selling_price, gst_rate, quantity, subtotal",
+  sales: "id, invoice_no, customer_name, customer_phone, total_amount, discount, tax_amount, grand_total, payment_mode, marketing_person_id, customer_id, loyalty_points, created_at",
+  sale_items: "id, sale_id, invoice_no, product_id, product_name, barcode, batch_no, price, quantity, total_price, mrp",
+} as const;
+
+/**
+ * Per-table sync state persisted in localStorage, scoped by Supabase URL so
+ * switching to a new Supabase project automatically performs a fresh sync.
+ */
+interface TableSyncMeta {
+  lastUpdatedAt?: string | null;
+  lastMaxId?: number;
+  lastCount?: number;
+  initialSyncDone?: boolean;
+  hasUpdatedAtCol?: boolean;
+}
+
+const SYNC_STATE_STORAGE_KEY = `retail_sathi_sync_meta_${supabaseUrl}`;
+const SALES_WINDOW_DAYS = 60;
+const POLL_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes (instead of 4 seconds)
+const JOB_BATCH_SIZE = 25;
+
+let tableSyncState: Record<string, TableSyncMeta> = (() => {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(SYNC_STATE_STORAGE_KEY) : null;
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+})();
+
+function saveTableSyncState(): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(SYNC_STATE_STORAGE_KEY, JSON.stringify(tableSyncState));
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function isNetworkOrTransientError(errMsg: string): boolean {
+  const lower = errMsg.toLowerCase();
+  return (
+    lower.includes("fetch") ||
+    lower.includes("network") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("timeout") ||
+    lower.includes("connection")
+  );
+}
+
+function isMissingFunctionError(errMsg: string): boolean {
+  const lower = errMsg.toLowerCase();
+  return lower.includes("could not find the function") || lower.includes("schema cache");
+}
+
+/**
+ * Drain the sync_jobs queue in batches (up to 25 statements per RPC call) in strict FIFO order.
+ * Batching cuts Supabase RPC requests and Postgres log insertions by ~95%.
+ * If a batch fails due to a bad query, falls back to executing that batch one-by-one
+ * so the invalid query is discarded immediately and never retried endlessly.
+ */
+export async function processSyncJobs(): Promise<boolean> {
+  if (isProcessing) return false;
+  if (!isCloudSyncConfigured) return false;
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    return;
+    return false;
   }
 
   isProcessing = true;
+  let pushedAny = false;
 
   try {
     const db = await getDb();
 
     while (true) {
-      // Pick the oldest job in the queue
       const rows = await db.select<{ id: number; query: string }[]>(
-        "SELECT id, query FROM sync_jobs ORDER BY id ASC LIMIT 1"
+        `SELECT id, query FROM sync_jobs ORDER BY id ASC LIMIT ${JOB_BATCH_SIZE}`
       );
 
       if (!rows || rows.length === 0) {
         break; // Queue is completely empty
       }
 
-      const job = rows[0];
+      // Attempt batched execution when multiple jobs are queued
+      if (rows.length > 1) {
+        const combinedSql = rows
+          .map((r) => {
+            const q = r.query.trim();
+            return q.endsWith(";") ? q : `${q};`;
+          })
+          .join("\n");
 
-      try {
-        const { error } = await supabase.rpc("exec_sql", {
-          query_text: job.query,
-        });
+        try {
+          const { error } = await supabase.rpc("exec_sql", {
+            query_text: combinedSql,
+          });
 
-        if (error) {
-          const errMsg = (error.message || "").toLowerCase();
+          if (!error) {
+            const ids = rows.map((r) => r.id).join(",");
+            await rawExecute(`DELETE FROM sync_jobs WHERE id IN (${ids})`);
+            pushedAny = true;
+            continue;
+          }
 
-          // If the exec_sql function is not yet installed on Supabase, pause and don't discard
-          if (
-            errMsg.includes("could not find the function") ||
-            errMsg.includes("schema cache")
-          ) {
+          const errMsg = error.message || "";
+          if (isMissingFunctionError(errMsg)) {
             console.warn(
               "[Sync] Cloud exec_sql function not found in Supabase. Please install the function in Supabase SQL editor."
             );
             break;
           }
-
-          // Network or timeout errors: keep the job and retry when reconnected
-          if (
-            errMsg.includes("fetch") ||
-            errMsg.includes("network") ||
-            errMsg.includes("failed to fetch") ||
-            errMsg.includes("timeout") ||
-            errMsg.includes("connection")
-          ) {
-            console.warn("[Sync] Network issue while syncing job #" + job.id + ". Retrying later.");
+          if (isNetworkOrTransientError(errMsg)) {
+            console.warn("[Sync] Network issue while syncing batch. Retrying later.");
             break;
           }
-
-          // Other errors (e.g. invalid query or syntax): log and discard so the queue doesn't stay blocked
-          console.error(
-            `[Sync] Unrecoverable error on job #${job.id} (${error.message}). Discarding query:`,
-            job.query
+          // Non-network SQL error in batch: fall through to single-job execution to isolate the bad query
+        } catch (networkErr: any) {
+          console.warn(
+            "[Sync] Exception sending batch to cloud. Pausing sync:",
+            networkErr?.message || networkErr
           );
+          break;
         }
+      }
 
-        // Successfully executed or discarded: remove from sync_jobs
-        await rawExecute("DELETE FROM sync_jobs WHERE id = $1", [job.id]);
-      } catch (networkErr: any) {
-        console.warn(
-          `[Sync] Exception sending job #${job.id} to cloud. Pausing sync:`,
-          networkErr?.message || networkErr
-        );
+      // Single-job execution (either only 1 job in queue, or isolating a bad query from a failed batch)
+      let pausedOnNetwork = false;
+      for (const job of rows) {
+        try {
+          const { error } = await supabase.rpc("exec_sql", {
+            query_text: job.query,
+          });
+
+          if (error) {
+            const errMsg = error.message || "";
+            if (isMissingFunctionError(errMsg)) {
+              console.warn(
+                "[Sync] Cloud exec_sql function not found in Supabase. Please install the function in Supabase SQL editor."
+              );
+              pausedOnNetwork = true;
+              break;
+            }
+            if (isNetworkOrTransientError(errMsg)) {
+              console.warn("[Sync] Network issue while syncing job #" + job.id + ". Retrying later.");
+              pausedOnNetwork = true;
+              break;
+            }
+            // Unrecoverable query error: log once and discard so it never loops in logs
+            console.error(
+              `[Sync] Unrecoverable error on job #${job.id} (${error.message}). Discarding query:`,
+              job.query
+            );
+          } else {
+            pushedAny = true;
+          }
+
+          await rawExecute("DELETE FROM sync_jobs WHERE id = $1", [job.id]);
+        } catch (networkErr: any) {
+          console.warn(
+            `[Sync] Exception sending job #${job.id} to cloud. Pausing sync:`,
+            networkErr?.message || networkErr
+          );
+          pausedOnNetwork = true;
+          break;
+        }
+      }
+
+      if (pausedOnNetwork) {
         break;
       }
     }
@@ -115,21 +229,148 @@ export async function processSyncJobs(): Promise<void> {
   } finally {
     isProcessing = false;
   }
+
+  return pushedAny;
 }
 
 /**
- * Supabase returns at most 1000 rows per request. Page through the whole table
- * so large tables (products, sales, sale_items) are pulled completely.
+ * Cheap 1-row check to determine whether a table on Supabase has changed since our last pull.
+ * Checks exact row count, max(id), and max(updated_at) (if updated_at column exists).
  */
-async function fetchAllRows(table: string, columns = "*"): Promise<{ data: any[] | null; error: any }> {
+async function checkTableChanged(table: string): Promise<{
+  changed: boolean;
+  canIncremental: boolean;
+  sinceUpdatedAt?: string;
+  latestUpdatedAt?: string | null;
+  latestMaxId?: number;
+  latestCount?: number;
+  hasUpdatedAtCol?: boolean;
+}> {
+  const meta = tableSyncState[table] || {};
+
+  // Try probing with updated_at unless we already know this table lacks updated_at
+  if (meta.hasUpdatedAtCol !== false) {
+    const { data, count, error } = await supabase
+      .from(table)
+      .select("id, updated_at", { count: "exact" })
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (!error) {
+      const top = data && data[0] ? data[0] : null;
+      const latestUpdatedAt = top?.updated_at || null;
+      const latestMaxId = top?.id ? Number(top.id) : 0;
+      const latestCount = count ?? 0;
+
+      const unchanged =
+        Boolean(meta.initialSyncDone) &&
+        meta.lastCount === latestCount &&
+        meta.lastUpdatedAt === latestUpdatedAt &&
+        meta.lastMaxId === latestMaxId;
+
+      // We can do an incremental pull (WHERE updated_at > lastUpdatedAt) if:
+      // 1. Initial full sync was already completed
+      // 2. We have a previous lastUpdatedAt timestamp
+      // 3. The cloud row count did not decrease (no deletions occurred)
+      const canIncremental =
+        Boolean(meta.initialSyncDone) &&
+        Boolean(meta.lastUpdatedAt) &&
+        latestCount >= (meta.lastCount ?? 0);
+
+      return {
+        changed: !unchanged,
+        canIncremental,
+        sinceUpdatedAt: meta.lastUpdatedAt || undefined,
+        latestUpdatedAt,
+        latestMaxId,
+        latestCount,
+        hasUpdatedAtCol: true,
+      };
+    }
+  }
+
+  // Fallback probe using id and exact row count (when updated_at column is not present yet)
+  const { data, count, error } = await supabase
+    .from(table)
+    .select("id", { count: "exact" })
+    .order("id", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    return { changed: true, canIncremental: false };
+  }
+
+  const top = data && data[0] ? data[0] : null;
+  const latestMaxId = top?.id ? Number(top.id) : 0;
+  const latestCount = count ?? 0;
+
+  const unchanged =
+    Boolean(meta.initialSyncDone) &&
+    meta.lastCount === latestCount &&
+    meta.lastMaxId === latestMaxId;
+
+  return {
+    changed: !unchanged,
+    canIncremental: false,
+    latestUpdatedAt: null,
+    latestMaxId,
+    latestCount,
+    hasUpdatedAtCol: false,
+  };
+}
+
+function recordTableSynced(
+  table: string,
+  probe: {
+    latestUpdatedAt?: string | null;
+    latestMaxId?: number;
+    latestCount?: number;
+    hasUpdatedAtCol?: boolean;
+  }
+): void {
+  tableSyncState[table] = {
+    lastUpdatedAt: probe.latestUpdatedAt ?? tableSyncState[table]?.lastUpdatedAt ?? null,
+    lastMaxId: probe.latestMaxId ?? tableSyncState[table]?.lastMaxId ?? 0,
+    lastCount: probe.latestCount ?? tableSyncState[table]?.lastCount ?? 0,
+    hasUpdatedAtCol: probe.hasUpdatedAtCol ?? tableSyncState[table]?.hasUpdatedAtCol,
+    initialSyncDone: true,
+  };
+  saveTableSyncState();
+}
+
+/**
+ * Paginated fetch supporting narrow column lists and optional filters
+ * (e.g. incremental updated_at > X or 60-day created_at cutoff).
+ */
+async function fetchRowsPaginated(
+  table: string,
+  columns: string,
+  options?: {
+    sinceUpdatedAt?: string;
+    sinceCreatedAt?: string;
+    sinceId?: number;
+  }
+): Promise<{ data: any[] | null; error: any }> {
   const PAGE = 1000;
   const all: any[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from(table)
       .select(columns)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
+
+    if (options?.sinceUpdatedAt) {
+      query = query.gt("updated_at", options.sinceUpdatedAt);
+    }
+    if (options?.sinceCreatedAt) {
+      query = query.gte("created_at", options.sinceCreatedAt);
+    }
+    if (options?.sinceId !== undefined && options.sinceId > 0) {
+      query = query.gt("id", options.sinceId);
+    }
+
+    const { data, error } = await query;
     if (error) return { data: null, error };
     all.push(...(data || []));
     if (!data || data.length < PAGE) break;
@@ -140,12 +381,17 @@ async function fetchAllRows(table: string, columns = "*"): Promise<{ data: any[]
 /**
  * Pull all stores from Supabase Cloud and upsert into local SQLite.
  */
-async function pullStores(): Promise<void> {
-  const { data, error } = await supabase
-    .from("stores")
-    .select("id, name, code, address, phone, email, setup_cost, amc, is_active, created_at, updated_at");
+async function pullStores(): Promise<boolean> {
+  const probe = await checkTableChanged("stores");
+  if (!probe.changed) return false;
 
-  if (error || !data || data.length === 0) return;
+  const { data, error } = await fetchRowsPaginated(
+    "stores",
+    TABLE_COLUMNS.stores,
+    probe.canIncremental ? { sinceUpdatedAt: probe.sinceUpdatedAt } : undefined
+  );
+
+  if (error || !data) return false;
 
   for (const store of data) {
     const isActiveVal = store.is_active === true || store.is_active === 1 ? 1 : 0;
@@ -177,18 +423,41 @@ async function pullStores(): Promise<void> {
       ]
     );
   }
+
+  recordTableSynced("stores", probe);
+  return data.length > 0;
 }
 
 /**
  * Pull per-store settings from cloud. Newest write wins (updated_ms), so a
  * stale cloud row can never overwrite a newer local save.
  */
-async function pullSettings(): Promise<void> {
-  const { data, error } = await supabase
-    .from("settings")
-    .select("store_id, key, value, updated_ms");
+async function pullSettings(): Promise<boolean> {
+  const meta = tableSyncState["settings"] || {};
 
-  if (error || !data || data.length === 0) return;
+  // Cheap 1-row check on updated_ms (avoids downloading 78KB base64 logo_url on every poll!)
+  const { data: probeData, count, error: probeError } = await supabase
+    .from("settings")
+    .select("updated_ms", { count: "exact" })
+    .order("updated_ms", { ascending: false })
+    .limit(1);
+
+  if (probeError) return false;
+
+  const topMs = probeData && probeData[0] ? Number(probeData[0].updated_ms) || 0 : 0;
+  const totalCount = count ?? 0;
+
+  if (meta.initialSyncDone && meta.lastMaxId === topMs && meta.lastCount === totalCount) {
+    return false;
+  }
+
+  let query = supabase.from("settings").select(TABLE_COLUMNS.settings);
+  if (meta.initialSyncDone && meta.lastMaxId && totalCount >= (meta.lastCount ?? 0)) {
+    query = query.gt("updated_ms", meta.lastMaxId);
+  }
+
+  const { data, error } = await query;
+  if (error || !data) return false;
 
   const EXCLUDED_DEVICE_KEYS = new Set([
     "default_printer",
@@ -212,17 +481,29 @@ async function pullSettings(): Promise<void> {
       [s.store_id, s.key, s.value ?? null, Number(s.updated_ms) || 0]
     );
   }
+
+  recordTableSynced("settings", {
+    latestMaxId: topMs,
+    latestCount: totalCount,
+    hasUpdatedAtCol: false,
+  });
+  return data.length > 0;
 }
 
 /**
- * Pull all users from Supabase Cloud and upsert into local SQLite.
+ * Pull users from Supabase Cloud and upsert into local SQLite.
  */
-async function pullUsers(): Promise<void> {
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, username, password_hash, full_name, role, phone, store_id, is_active, created_at, updated_at");
+async function pullUsers(): Promise<boolean> {
+  const probe = await checkTableChanged("users");
+  if (!probe.changed) return false;
 
-  if (error || !data || data.length === 0) return;
+  const { data, error } = await fetchRowsPaginated(
+    "users",
+    TABLE_COLUMNS.users,
+    probe.canIncremental ? { sinceUpdatedAt: probe.sinceUpdatedAt } : undefined
+  );
+
+  if (error || !data) return false;
 
   for (const user of data) {
     const isActiveVal = user.is_active === true || user.is_active === 1 ? 1 : 0;
@@ -252,14 +533,25 @@ async function pullUsers(): Promise<void> {
       ]
     );
   }
+
+  recordTableSynced("users", probe);
+  return data.length > 0;
 }
 
 /**
- * Pull all products / inventory items from Supabase Cloud into local SQLite.
+ * Pull products / inventory items from Supabase Cloud into local SQLite.
+ * Uses incremental pull (updated_at > lastSynced) whenever possible.
  */
-async function pullProducts(): Promise<void> {
-  const { data, error } = await fetchAllRows("products");
-  if (error || !data || data.length === 0) return;
+async function pullProducts(): Promise<boolean> {
+  const probe = await checkTableChanged("products");
+  if (!probe.changed) return false;
+
+  const { data, error } = await fetchRowsPaginated(
+    "products",
+    TABLE_COLUMNS.products,
+    probe.canIncremental ? { sinceUpdatedAt: probe.sinceUpdatedAt } : undefined
+  );
+  if (error || !data) return false;
 
   for (const p of data) {
     await rawExecute(
@@ -295,14 +587,24 @@ async function pullProducts(): Promise<void> {
       ]
     );
   }
+
+  recordTableSynced("products", probe);
+  return data.length > 0;
 }
 
 /**
  * Pull marketing personnel from Supabase Cloud into local SQLite.
  */
-async function pullMarketing(): Promise<void> {
-  const { data, error } = await fetchAllRows("marketing");
-  if (error || !data || data.length === 0) return;
+async function pullMarketing(): Promise<boolean> {
+  const probe = await checkTableChanged("marketing");
+  if (!probe.changed) return false;
+
+  const { data, error } = await fetchRowsPaginated(
+    "marketing",
+    TABLE_COLUMNS.marketing,
+    probe.canIncremental ? { sinceUpdatedAt: probe.sinceUpdatedAt } : undefined
+  );
+  if (error || !data) return false;
 
   for (const m of data) {
     await rawExecute(
@@ -326,14 +628,24 @@ async function pullMarketing(): Promise<void> {
       ]
     );
   }
+
+  recordTableSynced("marketing", probe);
+  return data.length > 0;
 }
 
 /**
  * Pull suppliers from Supabase Cloud into local SQLite.
  */
-async function pullSuppliers(): Promise<void> {
-  const { data, error } = await fetchAllRows("suppliers");
-  if (error || !data || data.length === 0) return;
+async function pullSuppliers(): Promise<boolean> {
+  const probe = await checkTableChanged("suppliers");
+  if (!probe.changed) return false;
+
+  const { data, error } = await fetchRowsPaginated(
+    "suppliers",
+    TABLE_COLUMNS.suppliers,
+    probe.canIncremental ? { sinceUpdatedAt: probe.sinceUpdatedAt } : undefined
+  );
+  if (error || !data) return false;
 
   for (const s of data) {
     await rawExecute(
@@ -359,25 +671,36 @@ async function pullSuppliers(): Promise<void> {
       ]
     );
   }
+
+  recordTableSynced("suppliers", probe);
+  return data.length > 0;
 }
 
 /**
  * Pull customers from Supabase Cloud into local SQLite.
  */
-async function pullCustomers(): Promise<void> {
-  const { data, error } = await fetchAllRows("customers");
-  if (error || !data || data.length === 0) return;
+async function pullCustomers(): Promise<boolean> {
+  const probe = await checkTableChanged("customers");
+  if (!probe.changed) return false;
+
+  const { data, error } = await fetchRowsPaginated(
+    "customers",
+    TABLE_COLUMNS.customers,
+    probe.canIncremental ? { sinceUpdatedAt: probe.sinceUpdatedAt } : undefined
+  );
+  if (error || !data) return false;
 
   for (const c of data) {
     await rawExecute(
-      `INSERT INTO customers (id, name, phone, address, purchase_item_id, loyalty_points, dues, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO customers (id, name, phone, address, purchase_item_id, loyalty_points, lucky_draw_used, dues, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          phone = excluded.phone,
          address = excluded.address,
          purchase_item_id = excluded.purchase_item_id,
          loyalty_points = excluded.loyalty_points,
+         lucky_draw_used = excluded.lucky_draw_used,
          dues = excluded.dues,
          created_at = excluded.created_at`,
       [
@@ -387,100 +710,162 @@ async function pullCustomers(): Promise<void> {
         c.address || null,
         c.purchase_item_id || null,
         Number(c.loyalty_points) || 0,
+        Number(c.lucky_draw_used) || 0,
         Number(c.dues) || 0,
         c.created_at || new Date().toISOString(),
       ]
     );
   }
+
+  recordTableSynced("customers", probe);
+  return data.length > 0;
 }
 
 /**
  * Pull purchases and purchase_items from Supabase Cloud into local SQLite.
  */
-async function pullPurchases(): Promise<void> {
-  const { data: purchasesData, error: pError } = await fetchAllRows("purchases");
-  if (!pError && purchasesData && purchasesData.length > 0) {
-    for (const p of purchasesData) {
-      await rawExecute(
-        `INSERT INTO purchases (id, supplier_name, invoice_no, purchase_date, gst_no, contact_no, total_amount, item_count, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT(id) DO UPDATE SET
-           supplier_name = excluded.supplier_name,
-           invoice_no = excluded.invoice_no,
-           purchase_date = excluded.purchase_date,
-           gst_no = excluded.gst_no,
-           contact_no = excluded.contact_no,
-           total_amount = excluded.total_amount,
-           item_count = excluded.item_count,
-           created_at = excluded.created_at`,
-        [
-          p.id,
-          p.supplier_name,
-          p.invoice_no,
-          p.purchase_date,
-          p.gst_no || null,
-          p.contact_no || null,
-          Number(p.total_amount) || 0,
-          Number(p.item_count) || 0,
-          p.created_at || new Date().toISOString(),
-        ]
-      );
+async function pullPurchases(): Promise<boolean> {
+  let updated = false;
+
+  const pProbe = await checkTableChanged("purchases");
+  if (pProbe.changed) {
+    const { data: purchasesData, error: pError } = await fetchRowsPaginated(
+      "purchases",
+      TABLE_COLUMNS.purchases,
+      pProbe.canIncremental ? { sinceUpdatedAt: pProbe.sinceUpdatedAt } : undefined
+    );
+    if (!pError && purchasesData) {
+      for (const p of purchasesData) {
+        await rawExecute(
+          `INSERT INTO purchases (id, supplier_name, invoice_no, purchase_date, gst_no, contact_no, total_amount, item_count, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT(id) DO UPDATE SET
+             supplier_name = excluded.supplier_name,
+             invoice_no = excluded.invoice_no,
+             purchase_date = excluded.purchase_date,
+             gst_no = excluded.gst_no,
+             contact_no = excluded.contact_no,
+             total_amount = excluded.total_amount,
+             item_count = excluded.item_count,
+             created_at = excluded.created_at`,
+          [
+            p.id,
+            p.supplier_name,
+            p.invoice_no,
+            p.purchase_date,
+            p.gst_no || null,
+            p.contact_no || null,
+            Number(p.total_amount) || 0,
+            Number(p.item_count) || 0,
+            p.created_at || new Date().toISOString(),
+          ]
+        );
+      }
+      recordTableSynced("purchases", pProbe);
+      if (purchasesData.length > 0) updated = true;
     }
   }
 
-  const { data: itemsData, error: iError } = await fetchAllRows("purchase_items");
-  if (!iError && itemsData && itemsData.length > 0) {
-    for (const it of itemsData) {
-      await rawExecute(
-        `INSERT INTO purchase_items (id, purchase_id, product_id, product_name, barcode, batch_no, hsn_code, category, purchase_price, mrp, selling_price, gst_rate, quantity, subtotal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT(id) DO UPDATE SET
-           purchase_id = excluded.purchase_id,
-           product_id = excluded.product_id,
-           product_name = excluded.product_name,
-           barcode = excluded.barcode,
-           batch_no = excluded.batch_no,
-           hsn_code = excluded.hsn_code,
-           category = excluded.category,
-           purchase_price = excluded.purchase_price,
-           mrp = excluded.mrp,
-           selling_price = excluded.selling_price,
-           gst_rate = excluded.gst_rate,
-           quantity = excluded.quantity,
-           subtotal = excluded.subtotal`,
-        [
-          it.id,
-          it.purchase_id,
-          it.product_id,
-          it.product_name,
-          it.barcode || null,
-          it.batch_no || null,
-          it.hsn_code || null,
-          it.category || "General",
-          Number(it.purchase_price) || 0,
-          Number(it.mrp) || 0,
-          Number(it.selling_price) || 0,
-          Number(it.gst_rate) || 0,
-          Number(it.quantity) || 0,
-          Number(it.subtotal) || 0,
-        ]
-      );
+  const piProbe = await checkTableChanged("purchase_items");
+  if (piProbe.changed) {
+    const prevMaxId = tableSyncState["purchase_items"]?.initialSyncDone
+      ? tableSyncState["purchase_items"]?.lastMaxId
+      : undefined;
+    const { data: itemsData, error: iError } = await fetchRowsPaginated(
+      "purchase_items",
+      TABLE_COLUMNS.purchase_items,
+      piProbe.canIncremental
+        ? { sinceUpdatedAt: piProbe.sinceUpdatedAt }
+        : prevMaxId
+        ? { sinceId: prevMaxId }
+        : undefined
+    );
+    if (!iError && itemsData) {
+      for (const it of itemsData) {
+        await rawExecute(
+          `INSERT INTO purchase_items (id, purchase_id, product_id, product_name, barcode, batch_no, hsn_code, category, purchase_price, mrp, selling_price, gst_rate, quantity, subtotal)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           ON CONFLICT(id) DO UPDATE SET
+             purchase_id = excluded.purchase_id,
+             product_id = excluded.product_id,
+             product_name = excluded.product_name,
+             barcode = excluded.barcode,
+             batch_no = excluded.batch_no,
+             hsn_code = excluded.hsn_code,
+             category = excluded.category,
+             purchase_price = excluded.purchase_price,
+             mrp = excluded.mrp,
+             selling_price = excluded.selling_price,
+             gst_rate = excluded.gst_rate,
+             quantity = excluded.quantity,
+             subtotal = excluded.subtotal`,
+          [
+            it.id,
+            it.purchase_id,
+            it.product_id,
+            it.product_name,
+            it.barcode || null,
+            it.batch_no || null,
+            it.hsn_code || null,
+            it.category || "General",
+            Number(it.purchase_price) || 0,
+            Number(it.mrp) || 0,
+            Number(it.selling_price) || 0,
+            Number(it.gst_rate) || 0,
+            Number(it.quantity) || 0,
+            Number(it.subtotal) || 0,
+          ]
+        );
+      }
+      recordTableSynced("purchase_items", piProbe);
+      if (itemsData.length > 0) updated = true;
     }
   }
+
+  return updated;
 }
 
 /**
  * Pull sales and sale_items from Supabase Cloud into local SQLite.
- * Uses invoice_no as the universal primary key to prevent ID clashes across devices.
+ * - Uses cheap change check first so idle polls download 0 rows.
+ * - After the first full sync on a counter, only pulls the last 60 days of sales
+ *   (or rows updated since last sync) so historical sales stay in local SQLite
+ *   without consuming egress on every sync.
  */
-async function pullSales(): Promise<void> {
+async function pullSales(): Promise<boolean> {
   const db = await getDb();
 
-  // 1. Fetch sales from Supabase
-  const { data: salesData, error: sError } = await fetchAllRows("sales");
+  const salesProbe = await checkTableChanged("sales");
+  const itemsProbe = await checkTableChanged("sale_items");
+  if (!salesProbe.changed && !itemsProbe.changed) {
+    return false;
+  }
+
+  const localSales = await db.select<{ id: number; invoice_no: string; created_at?: string }[]>(
+    "SELECT id, invoice_no, created_at FROM sales"
+  );
+  const hasLocalHistory = localSales.length > 0 && Boolean(tableSyncState["sales"]?.initialSyncDone);
+
+  // 60-day window cutoff for subsequent syncs
+  const cutoffDateIso = new Date(
+    Date.now() - SALES_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  // 1. Fetch sales from Supabase (incremental or 60-day window after initial sync)
+  const salesFetchOptions = salesProbe.canIncremental
+    ? { sinceUpdatedAt: salesProbe.sinceUpdatedAt }
+    : hasLocalHistory
+    ? { sinceCreatedAt: cutoffDateIso }
+    : undefined;
+
+  const { data: salesData, error: sError } = await fetchRowsPaginated(
+    "sales",
+    TABLE_COLUMNS.sales,
+    salesFetchOptions
+  );
   if (sError || !salesData) {
     if (sError) console.warn("[SyncProcessor] Failed to pull sales:", sError);
-    return;
+    return false;
   }
 
   // Map to resolve Supabase sale.id -> invoice_no
@@ -492,8 +877,8 @@ async function pullSales(): Promise<void> {
     cloudSaleIdToInvoice.set(s.id, s.invoice_no);
 
     await rawExecute(
-      `INSERT INTO sales (invoice_no, customer_name, customer_phone, total_amount, discount, tax_amount, grand_total, payment_mode, marketing_person_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO sales (invoice_no, customer_name, customer_phone, total_amount, discount, tax_amount, grand_total, payment_mode, marketing_person_id, customer_id, loyalty_points, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT(invoice_no) DO UPDATE SET
          customer_name = excluded.customer_name,
          customer_phone = excluded.customer_phone,
@@ -503,6 +888,8 @@ async function pullSales(): Promise<void> {
          grand_total = excluded.grand_total,
          payment_mode = excluded.payment_mode,
          marketing_person_id = excluded.marketing_person_id,
+         customer_id = excluded.customer_id,
+         loyalty_points = excluded.loyalty_points,
          created_at = excluded.created_at`,
       [
         s.invoice_no,
@@ -514,24 +901,71 @@ async function pullSales(): Promise<void> {
         Number(s.grand_total) || 0,
         s.payment_mode,
         s.marketing_person_id || null,
+        s.customer_id || null,
+        Number(s.loyalty_points) || 0,
         s.created_at || new Date().toISOString(),
       ]
     );
   }
 
   // 2. Fetch sale_items from Supabase
-  const { data: saleItemsData, error: siError } = await fetchAllRows("sale_items");
-  if (siError || !saleItemsData) {
-    if (siError) console.warn("[SyncProcessor] Failed to pull sale_items:", siError);
-    return;
+  // After initial sync, only fetch new/updated sale_items (or items for the fetched sales window)
+  let saleItemsData: any[] | null = null;
+  let siError: any = null;
+
+  const prevMaxItemId = tableSyncState["sale_items"]?.initialSyncDone
+    ? tableSyncState["sale_items"]?.lastMaxId
+    : undefined;
+  const itemsCountDecreased =
+    (itemsProbe.latestCount ?? 0) < (tableSyncState["sale_items"]?.lastCount ?? 0);
+
+  if (itemsProbe.canIncremental && !itemsCountDecreased) {
+    const res = await fetchRowsPaginated("sale_items", TABLE_COLUMNS.sale_items, {
+      sinceUpdatedAt: itemsProbe.sinceUpdatedAt,
+    });
+    saleItemsData = res.data;
+    siError = res.error;
+  } else if (hasLocalHistory && prevMaxItemId && !itemsCountDecreased && salesProbe.canIncremental) {
+    const res = await fetchRowsPaginated("sale_items", TABLE_COLUMNS.sale_items, {
+      sinceId: prevMaxItemId,
+    });
+    saleItemsData = res.data;
+    siError = res.error;
+  } else if (hasLocalHistory && salesData.length > 0 && salesData.length <= 300) {
+    // Fetch sale_items only for the invoices in our 60-day window
+    const invoices = salesData.map((s) => s.invoice_no).filter(Boolean);
+    const allWindowItems: any[] = [];
+    const CHUNK = 100;
+    for (let i = 0; i < invoices.length; i += CHUNK) {
+      const batch = invoices.slice(i, i + CHUNK);
+      const { data, error } = await supabase
+        .from("sale_items")
+        .select(TABLE_COLUMNS.sale_items)
+        .in("invoice_no", batch);
+      if (error) {
+        siError = error;
+        break;
+      }
+      if (data) allWindowItems.push(...data);
+    }
+    if (!siError) saleItemsData = allWindowItems;
+  } else {
+    const res = await fetchRowsPaginated("sale_items", TABLE_COLUMNS.sale_items);
+    saleItemsData = res.data;
+    siError = res.error;
   }
 
-  // Map all local sales: invoice_no -> local sale_id
-  const localSales = await db.select<{ id: number; invoice_no: string }[]>(
-    "SELECT id, invoice_no FROM sales"
+  if (siError || !saleItemsData) {
+    if (siError) console.warn("[SyncProcessor] Failed to pull sale_items:", siError);
+    return salesData.length > 0;
+  }
+
+  // Refresh local sales map after upserting sales
+  const refreshedLocalSales = await db.select<{ id: number; invoice_no: string; created_at?: string }[]>(
+    "SELECT id, invoice_no, created_at FROM sales"
   );
   const localSaleMap = new Map<string, number>();
-  for (const ls of localSales) {
+  for (const ls of refreshedLocalSales) {
     if (ls.invoice_no) localSaleMap.set(ls.invoice_no, ls.id);
   }
 
@@ -560,30 +994,28 @@ async function pullSales(): Promise<void> {
     const localSaleId = localSaleMap.get(invoiceNo);
     if (!localSaleId) continue;
 
-    // Check existing local items for this invoice
     const localItems = await db.select<{ id: number; product_id: number; quantity: number }[]>(
       "SELECT id, product_id, quantity FROM sale_items WHERE invoice_no = $1",
       [invoiceNo]
     );
 
-    // If local items already exist and count matches cloud, they are already synced
     if (localItems.length === cloudItems.length && localItems.length > 0) {
       continue;
     }
 
-    // Otherwise, replace local items for this invoice to keep data consistent without duplicates
     await rawExecute("DELETE FROM sale_items WHERE invoice_no = $1", [invoiceNo]);
 
     for (const it of cloudItems) {
       await rawExecute(
-        `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, price, quantity, total_price, mrp)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO sale_items (sale_id, invoice_no, product_id, product_name, barcode, batch_no, price, quantity, total_price, mrp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           localSaleId,
           invoiceNo,
           it.product_id,
           it.product_name,
           it.barcode || null,
+          it.batch_no || null,
           Number(it.price) || 0,
           Number(it.quantity) || 0,
           Number(it.total_price) || 0,
@@ -593,24 +1025,32 @@ async function pullSales(): Promise<void> {
     }
   }
 
-  // 3. Handle deleted sales from cloud
-  const cloudInvoiceSet = new Set(salesData.map((s) => s.invoice_no));
-  for (const ls of localSales) {
-    if (!ls.invoice_no) continue;
-    if (!cloudInvoiceSet.has(ls.invoice_no)) {
-      // Check if there are any pending sync jobs for this invoice (e.g. freshly created offline sale)
-      const pending = await db.select<{ count: number }[]>(
-        "SELECT count(*) as count FROM sync_jobs WHERE query LIKE '%' || $1 || '%'",
-        [ls.invoice_no]
-      );
-      if (pending && pending[0] && pending[0].count > 0) {
+  // 3. Handle deleted sales from cloud (only when a full or 60-day window scan was run, not incremental)
+  if (!salesProbe.canIncremental) {
+    const cloudInvoiceSet = new Set(salesData.map((s) => s.invoice_no));
+    for (const ls of refreshedLocalSales) {
+      if (!ls.invoice_no) continue;
+      // When using the 60-day window, never delete local historical sales older than 60 days
+      if (hasLocalHistory && ls.created_at && ls.created_at < cutoffDateIso) {
         continue;
       }
-      // Sale deleted on cloud: remove local items and sale record
-      await rawExecute("DELETE FROM sale_items WHERE invoice_no = $1", [ls.invoice_no]);
-      await rawExecute("DELETE FROM sales WHERE invoice_no = $1", [ls.invoice_no]);
+      if (!cloudInvoiceSet.has(ls.invoice_no)) {
+        const pending = await db.select<{ count: number }[]>(
+          "SELECT count(*) as count FROM sync_jobs WHERE query LIKE '%' || $1 || '%'",
+          [ls.invoice_no]
+        );
+        if (pending && pending[0] && pending[0].count > 0) {
+          continue;
+        }
+        await rawExecute("DELETE FROM sale_items WHERE invoice_no = $1", [ls.invoice_no]);
+        await rawExecute("DELETE FROM sales WHERE invoice_no = $1", [ls.invoice_no]);
+      }
     }
   }
+
+  recordTableSynced("sales", salesProbe);
+  recordTableSynced("sale_items", itemsProbe);
+  return salesData.length > 0 || saleItemsData.length > 0;
 }
 
 export const DB_UPDATED_EVENT = "retail_sathi_db_updated";
@@ -627,8 +1067,8 @@ export function notifyDbUpdated(table = "all"): void {
 }
 
 /**
- * Pull all tables from Supabase Cloud and upsert into local SQLite.
- * Uses rawExecute to avoid enqueuing redundant sync jobs.
+ * Pull changed tables from Supabase Cloud and upsert into local SQLite.
+ * Uses cheap 1-row checks and incremental pulls to minimize Supabase egress.
  */
 export async function pullDataFromCloud(): Promise<void> {
   if (isPulling) return;
@@ -639,19 +1079,21 @@ export async function pullDataFromCloud(): Promise<void> {
 
   isPulling = true;
   try {
+    let anyChanged = false;
     // Topological order: parent tables first, then dependent child tables
-    await pullStores();
-    await pullSettings();
-    await pullUsers();
-    await pullMarketing();
-    await pullSuppliers();
-    await pullProducts();
-    await pullCustomers();
-    await pullPurchases();
-    await pullSales();
-    
-    // Notify all active React pages to reload fresh data from SQLite
-    notifyDbUpdated("all");
+    if (await pullStores()) anyChanged = true;
+    if (await pullSettings()) anyChanged = true;
+    if (await pullUsers()) anyChanged = true;
+    if (await pullMarketing()) anyChanged = true;
+    if (await pullSuppliers()) anyChanged = true;
+    if (await pullProducts()) anyChanged = true;
+    if (await pullCustomers()) anyChanged = true;
+    if (await pullPurchases()) anyChanged = true;
+    if (await pullSales()) anyChanged = true;
+
+    if (anyChanged) {
+      notifyDbUpdated("all");
+    }
   } catch (err) {
     console.error("[Sync] Error in pullDataFromCloud:", err);
   } finally {
@@ -668,30 +1110,43 @@ export async function pullUsersFromCloud(): Promise<void> {
 
 /**
  * Trigger background sync job processing with debounce.
+ * Note: Pushing local writes does NOT re-download the entire cloud database,
+ * because the write was already applied to local SQLite.
  */
-export function triggerSync(delayMs = 150): void {
+export function triggerSync(delayMs = 250): void {
   if (syncTimeout) {
     clearTimeout(syncTimeout);
   }
   syncTimeout = setTimeout(() => {
-    processSyncJobs()
-      .then(() => pullDataFromCloud())
-      .catch((err) => {
-        console.error("[Sync] Background sync execution failed:", err);
-      });
+    processSyncJobs().catch((err) => {
+      console.error("[Sync] Background sync execution failed:", err);
+    });
   }, delayMs);
 }
 
-// Automatically process sync jobs on network restoration and constant interval
+// Automatically flush queued jobs and pull cloud changes on a low-egress schedule
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
-    console.log("[Sync] Online status detected, flushing sync jobs and pulling all data from cloud...");
-    triggerSync(200);
-    pullDataFromCloud();
+    console.log("[Sync] Online status detected, flushing sync jobs and pulling changed data from cloud...");
+    processSyncJobs()
+      .then(() => pullDataFromCloud())
+      .catch((err) => console.error("[Sync] Reconnect sync error:", err));
   });
 
-  // Constantly check queue and pull fresh updates from cloud every 4 seconds
+  // Initial startup sync (flush any offline jobs, then pull changes)
+  setTimeout(() => {
+    processSyncJobs()
+      .then(() => pullDataFromCloud())
+      .catch((err) => console.error("[Sync] Initial sync error:", err));
+  }, 1500);
+
+  // Check local sync_jobs queue every 15s (zero network requests if local queue is empty)
   setInterval(() => {
-    triggerSync(0);
-  }, 4000);
+    processSyncJobs().catch((err) => console.error("[Sync] Queue flush error:", err));
+  }, 15000);
+
+  // Poll cloud for remote counter changes every 3 minutes instead of every 4 seconds
+  setInterval(() => {
+    pullDataFromCloud().catch((err) => console.error("[Sync] Periodic pull error:", err));
+  }, POLL_INTERVAL_MS);
 }

@@ -1,3 +1,16 @@
+# Retail Sathi v0.3.2 - New Supabase Cloud Migration & Low-Egress Sync Optimization
+
+### 🚀 Key Enhancements & Fixes
+- **Migrated to New Supabase Cloud Instance**: Updated cloud endpoint and credentials to the new Supabase project (`icrlnkszpdeuwbqnkcwu.supabase.co`) across background sync and real-time clock calibration.
+- **95%+ Reduction in Cloud Egress & Logs**:
+  - Added incremental sync using `updated_at` probes and row-count checks so idle polls download zero rows unless remote data actually changed.
+  - Batched outgoing `sync_jobs` (up to 25 SQL statements per `exec_sql` RPC call) and discarded unrecoverable SQL errors immediately to eliminate retry storms.
+  - Scoped recurring `sales` and `sale_items` cloud pulls to a 60-day rolling window after initial sync, preserving full historical data in local SQLite.
+  - Switched cloud polling interval from 4 seconds to 3 minutes while keeping local write queue flushes fast (15s / immediate on edit).
+- **Reliable Online/Offline Detection**: Replaced local gateway pings with external internet endpoints (`1.1.1.1` / `google.com`) so Wi-Fi routers without internet access accurately report offline status.
+
+---
+
 # Retail Sathi v0.3.1 - Accurate Monthly Sales & GST Date Grouping
 
 ### 🚀 Key Fixes

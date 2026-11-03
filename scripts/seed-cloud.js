@@ -16,10 +16,10 @@ function loadEnv() {
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (trimmed.startsWith('VITE_SUPABASE_URL=')) {
-      url = trimmed.split('=')[1].trim();
+      url = trimmed.split('=').slice(1).join('=').trim().replace(/^["']|["']$/g, '');
     }
     if (trimmed.startsWith('VITE_SUPABASE_ANON_KEY=')) {
-      key = trimmed.split('=')[1].trim();
+      key = trimmed.split('=').slice(1).join('=').trim().replace(/^["']|["']$/g, '');
     }
   }
   if (!url || !key) {
@@ -45,13 +45,68 @@ function getLocalDbPath() {
 
 // Helper to convert date strings to valid ISO format for PostgreSQL
 function formatIsoDate(dateVal) {
-  if (!dateVal) return null;
+  if (!dateVal) return new Date().toISOString();
   const d = new Date(dateVal);
   if (!isNaN(d.getTime())) {
     return d.toISOString();
   }
-  return dateVal;
+  return new Date().toISOString();
 }
+
+const ALLOWED_COLUMNS = {
+  stores: [
+    'id', 'name', 'code', 'address', 'phone', 'email', 'setup_cost', 'amc',
+    'is_active', 'upi_id', 'upi_name', 'gstin', 'receipt_footer', 'paper_width',
+    'default_printer', 'show_barcode', 'show_upi_qr', 'tagline', 'promo_text',
+    'fssai', 'logo_url', 'return_policy', 'show_header', 'show_customer',
+    'show_savings', 'show_tax', 'show_return_policy', 'mandatory_bill_note',
+    'barcode_printer', 'label_width_mm', 'label_height_mm', 'label_gap_mm',
+    'created_at', 'updated_at',
+  ],
+  settings: ['store_id', 'key', 'value', 'updated_ms'],
+  users: [
+    'id', 'username', 'password_hash', 'full_name', 'role', 'phone',
+    'store_id', 'is_active', 'created_at', 'updated_at',
+  ],
+  products: [
+    'id', 'barcode', 'name', 'batch_no', 'mrp', 'price', 'cost_price',
+    'stock', 'hsn_code', 'reorder_threshold', 'gst_rate', 'category', 'created_at',
+  ],
+  marketing: ['id', 'name', 'phone', 'area', 'sales', 'commission', 'created_at'],
+  suppliers: [
+    'id', 'name', 'company_name', 'gst_no', 'contact_no', 'email', 'address', 'created_at',
+  ],
+  customers: [
+    'id', 'name', 'phone', 'address', 'purchase_item_id', 'loyalty_points',
+    'lucky_draw_used', 'dues', 'created_at',
+  ],
+  purchases: [
+    'id', 'supplier_name', 'invoice_no', 'purchase_date', 'gst_no', 'contact_no',
+    'total_amount', 'item_count', 'created_at',
+  ],
+  purchase_items: [
+    'id', 'purchase_id', 'product_id', 'product_name', 'barcode', 'batch_no',
+    'hsn_code', 'category', 'purchase_price', 'mrp', 'selling_price', 'gst_rate',
+    'quantity', 'subtotal',
+  ],
+  sales: [
+    'id', 'invoice_no', 'customer_name', 'customer_phone', 'total_amount',
+    'discount', 'tax_amount', 'grand_total', 'payment_mode', 'marketing_person_id',
+    'customer_id', 'loyalty_points', 'created_at',
+  ],
+  sale_items: [
+    'id', 'sale_id', 'invoice_no', 'product_id', 'product_name', 'barcode',
+    'batch_no', 'price', 'quantity', 'total_price', 'mrp',
+  ],
+};
+
+const EXCLUDED_DEVICE_KEYS = new Set([
+  'default_printer',
+  'barcode_printer',
+  'paper_width',
+  'pos_printer',
+  'pos_paper_width',
+]);
 
 // 3. Main seeding function
 async function seedCloud() {
@@ -64,12 +119,11 @@ async function seedCloud() {
   const localDb = new Database(dbPath, { readonly: true });
   const supabase = createClient(url, key);
 
-  // Topological order respecting foreign keys:
-  // 1. Independent parent tables: products, marketing, suppliers
-  // 2. Dependent tables: customers (references products), purchases
-  // 3. Child tables: purchase_items (references purchases, products), sales (references marketing)
-  // 4. Grandchild tables: sale_items (references sales, products)
+  // Topological order respecting foreign keys across all 11 tables:
   const tables = [
+    'stores',
+    'settings',
+    'users',
     'products',
     'marketing',
     'suppliers',
@@ -80,30 +134,44 @@ async function seedCloud() {
     'sale_items',
   ];
 
-  console.log('\nSeeding tables to Supabase...\n');
+  console.log('\nSeeding tables to Supabase (in 250-row batches)...\n');
 
   for (const table of tables) {
     process.stdout.write(`Processing "${table}"... `);
 
-    // Fetch all rows from local SQLite
-    const localRows = localDb.prepare(`SELECT * FROM ${table}`).all();
+    let localRows = [];
+    try {
+      localRows = localDb.prepare(`SELECT * FROM ${table}`).all();
+    } catch {
+      console.log('table not found locally (skipped).');
+      continue;
+    }
+
+    if (table === 'settings') {
+      localRows = localRows.filter((r) => !EXCLUDED_DEVICE_KEYS.has(r.key));
+    }
 
     if (localRows.length === 0) {
       console.log('0 rows found locally (skipped).');
       continue;
     }
 
-    // Clean rows: remove local-only columns like 'uuid', normalize dates
+    // Clean rows: keep only columns defined in the Supabase schema and normalize dates
+    const allowedCols = ALLOWED_COLUMNS[table];
     const sanitizedRows = localRows.map((row) => {
-      const clean = { ...row };
-      delete clean.uuid; // Not present in Supabase schema
-
-      // Format created_at to ISO string if present
-      if ('created_at' in clean && clean.created_at) {
-        clean.created_at = formatIsoDate(clean.created_at);
+      const clean = {};
+      for (const col of allowedCols) {
+        if (col in row) {
+          clean[col] = row[col];
+        }
       }
 
-      // Format purchase_date if invalid string
+      if ('created_at' in clean) {
+        clean.created_at = formatIsoDate(clean.created_at);
+      }
+      if ('updated_at' in clean) {
+        clean.updated_at = formatIsoDate(clean.updated_at);
+      }
       if ('purchase_date' in clean && clean.purchase_date) {
         clean.purchase_date = String(clean.purchase_date);
       }
@@ -111,15 +179,15 @@ async function seedCloud() {
       return clean;
     });
 
-    // Upsert in batches of 50
-    const batchSize = 50;
+    const batchSize = 250;
     let totalUpserted = 0;
+    const conflictTarget = table === 'settings' ? 'store_id,key' : 'id';
 
     for (let i = 0; i < sanitizedRows.length; i += batchSize) {
       const batch = sanitizedRows.slice(i, i + batchSize);
       const { error } = await supabase
         .from(table)
-        .upsert(batch, { onConflict: 'id' });
+        .upsert(batch, { onConflict: conflictTarget });
 
       if (error) {
         console.error(`\n[Error in "${table}"]:`, error.message);
@@ -131,20 +199,25 @@ async function seedCloud() {
     console.log(`Done (${totalUpserted} rows upserted).`);
   }
 
-  // Reset sequence values on Supabase so future inserts don't conflict with synced IDs
+  // Reset sequence values on Supabase in a SINGLE batched RPC call
   console.log('\nResetting PostgreSQL sequence IDs on cloud tables...');
-  for (const table of tables) {
-    try {
-      const seqSql = `
-        SELECT setval(
-          pg_get_serial_sequence('${table}', 'id'),
-          COALESCE((SELECT MAX(id) FROM ${table}), 1)
-        );
-      `;
-      await supabase.rpc('exec_sql', { query_text: seqSql });
-    } catch (seqErr) {
-      console.warn(`Could not reset sequence for ${table}:`, seqErr?.message || seqErr);
+  const tablesWithSerialId = tables.filter((t) => t !== 'settings');
+  const combinedSeqSql = tablesWithSerialId
+    .map(
+      (t) =>
+        `SELECT setval(pg_get_serial_sequence('${t}', 'id'), COALESCE((SELECT MAX(id) FROM ${t}), 1));`
+    )
+    .join('\n');
+
+  try {
+    const { error } = await supabase.rpc('exec_sql', { query_text: combinedSeqSql });
+    if (error) {
+      console.warn('Could not reset sequences via exec_sql:', error.message);
+    } else {
+      console.log('All sequences reset in 1 batched RPC call.');
     }
+  } catch (seqErr) {
+    console.warn('Could not reset sequences:', seqErr?.message || seqErr);
   }
 
   // Verification
@@ -153,7 +226,17 @@ async function seedCloud() {
   console.log('|-----------------|-------------|-------------|---------|');
 
   for (const table of tables) {
-    const localCount = localDb.prepare(`SELECT count(*) as count FROM ${table}`).get().count;
+    let localCount = 0;
+    try {
+      const rows = localDb.prepare(`SELECT * FROM ${table}`).all();
+      localCount =
+        table === 'settings'
+          ? rows.filter((r) => !EXCLUDED_DEVICE_KEYS.has(r.key)).length
+          : rows.length;
+    } catch {
+      continue;
+    }
+
     const { count: cloudCount } = await supabase
       .from(table)
       .select('*', { count: 'exact', head: true });

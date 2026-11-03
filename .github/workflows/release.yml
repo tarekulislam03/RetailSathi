@@ -68,8 +68,8 @@ jobs:
             echo "RELEASE_NOTES=Retail Sathi Release v__VERSION__" >> $GITHUB_ENV
           fi
 
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || 'https://sfbzeehmjrarhprpagxy.supabase.co' }}" >> .env
-          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmYnplZWhtanJhcmhwcnBhZ3h5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODk0NjMsImV4cCI6MjEwNDk2NTQ2M30.lENrO2VCCGEAEuiuOEB1JCzKiFDcV8fY6Nn49Pw-Cto' }}" >> .env
+          echo "VITE_SUPABASE_URL=https://icrlnkszpdeuwbqnkcwu.supabase.co" >> .env
+          echo "VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imljcmxua3N6cGRldXdicW5rY3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0Nzc1NDcsImV4cCI6MjEwOTA1MzU0N30.uTEtoK02NHQX-SWP446ZusScAbL4p3C7FqsPHe2rj2I" >> .env
 
       - name: Build Tauri App & Publish Platform Release
         uses: tauri-apps/tauri-action@v0
@@ -77,8 +77,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://sfbzeehmjrarhprpagxy.supabase.co' }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmYnplZWhtanJhcmhwcnBhZ3h5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODk0NjMsImV4cCI6MjEwNDk2NTQ2M30.lENrO2VCCGEAEuiuOEB1JCzKiFDcV8fY6Nn49Pw-Cto' }}
+          VITE_SUPABASE_URL: 'https://icrlnkszpdeuwbqnkcwu.supabase.co'
+          VITE_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imljcmxua3N6cGRldXdicW5rY3d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0Nzc1NDcsImV4cCI6MjEwOTA1MzU0N30.uTEtoK02NHQX-SWP446ZusScAbL4p3C7FqsPHe2rj2I'
         with:
           tagName: v__VERSION__
           releaseName: 'Retail Sathi v__VERSION__'
