@@ -25,12 +25,9 @@ function getNetworkConnection(): any {
 }
 
 const PING_ENDPOINTS = [
-  import.meta.env.VITE_SUPABASE_URL
-    ? `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`
-    : null,
-  "https://www.google.com/favicon.ico",
   "https://1.1.1.1/cdn-cgi/trace",
-].filter(Boolean) as string[];
+  "https://www.google.com/favicon.ico",
+];
 
 async function measurePing(): Promise<{ success: boolean; latency: number }> {
   if (typeof navigator !== "undefined" && !navigator.onLine) {

@@ -24,9 +24,11 @@ export async function syncRealTime(): Promise<void> {
 
   syncPromise = (async () => {
     try {
-      const url =
+      const url = (
         import.meta.env.VITE_SUPABASE_URL ||
-        "https://sfbzeehmjrarhprpagxy.supabase.co";
+        "https://icrlnkszpdeuwbqnkcwu.supabase.co"
+      ).trim();
+      if (!url) return;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
 
@@ -63,10 +65,10 @@ export async function syncRealTime(): Promise<void> {
   return syncPromise;
 }
 
-// Automatically sync on load and every 5 minutes
+// Automatically sync on load and every 60 minutes
 syncRealTime();
 if (typeof window !== "undefined") {
-  setInterval(syncRealTime, 5 * 60 * 1000);
+  setInterval(syncRealTime, 60 * 60 * 1000);
 }
 
 /**
