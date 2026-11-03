@@ -1,4 +1,4 @@
-import { getDb } from "../../../services/database";
+import { getDb, rawExecute } from "../../../services/database";
 import { Customer, CustomerInput, CustomerStatsData } from "../types";
 import { Sale, SaleItem } from "../../billing/types";
 
@@ -116,10 +116,10 @@ export async function fetchCustomers(): Promise<Customer[]> {
     };
   });
 
-  // Persist recalculated points and uppercase names so previously stored values match
+  // Persist recalculated points and uppercase names locally using rawExecute so background UI refreshes never enqueue cloud sync jobs
   for (const u of staleUpdates) {
     try {
-      await db.execute("UPDATE customers SET loyalty_points = $1 WHERE id = $2", [
+      await rawExecute("UPDATE customers SET loyalty_points = $1 WHERE id = $2", [
         u.points,
         u.id,
       ]);
@@ -128,10 +128,17 @@ export async function fetchCustomers(): Promise<Customer[]> {
     }
   }
 
-  try {
-    await db.execute("UPDATE customers SET name = UPPER(name) WHERE name IS NOT NULL AND name != UPPER(name)");
-  } catch (err) {
-    // ignore
+  const hasLowercaseName = rows.some(
+    (r) => typeof r.name === "string" && r.name !== r.name.toUpperCase()
+  );
+  if (hasLowercaseName) {
+    try {
+      await rawExecute(
+        "UPDATE customers SET name = UPPER(name) WHERE name IS NOT NULL AND name != UPPER(name)"
+      );
+    } catch (err) {
+      // ignore
+    }
   }
 
   return result;

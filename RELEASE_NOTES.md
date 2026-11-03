@@ -1,3 +1,11 @@
+# Retail Sathi v0.3.3 - Eliminate 3-Second Background `exec_sql` RPC Spam
+
+### 🚀 Key Fixes
+- **Stopped 3-Second `exec_sql` Loop During Billing/Customer Refresh**: Fixed an issue in `fetchCustomers()` where `db.execute("UPDATE customers SET name = UPPER(name) ...")` was called on every 2.5s–3s background UI refresh (`useDbRefresh`), enqueuing a no-op cloud `sync_job` and calling `POST /rest/v1/rpc/exec_sql` every 3 seconds even when the counter was idle.
+- **No-Op Update Guard in Sync Interceptor**: `db.execute` now ignores `UPDATE` statements that affect `0` rows locally so redundant updates are never queued for Supabase.
+
+---
+
 # Retail Sathi v0.3.2 - New Supabase Cloud Migration & Low-Egress Sync Optimization
 
 ### 🚀 Key Enhancements & Fixes
