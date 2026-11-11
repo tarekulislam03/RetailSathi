@@ -238,6 +238,7 @@ export const CustomersPage: React.FC = () => {
           setIsPurchasesModalOpen(false);
           setViewPurchasesCustomer(null);
         }}
+        onPurchasesChanged={() => loadData(true)}
       />
 
       <ClearDuesModal

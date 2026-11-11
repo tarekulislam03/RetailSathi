@@ -358,7 +358,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
       console.log("billing sale transaction test passed!");
     });
 
-    it("should update product mrp and selling price in database when edited during sale checkout", async () => {
+    it("should apply edited mrp and selling price temporarily to the customer bill without changing product prices in database", async () => {
       await createProduct({
         barcode: "EDIT_BAR_01",
         name: "Biscuit Pack",
@@ -399,18 +399,19 @@ describe("Retail Sathi Backend Logic Tests", () => {
         ],
       });
 
+      // The bill/sale itself uses the temporary edited MRP and selling price
       expect(sale.grand_total).toBe(110);
       expect(sale.items![0].price).toBe(55);
       expect(sale.items![0].mrp).toBe(60);
 
-      // Verify that database products table was updated with the new mrp, price and deducted stock (10 - 2 = 8)
+      // Verify that database products table deducted stock (10 - 2 = 8) but kept original mrp (50) and price (45) unchanged
       products = await fetchProducts();
       const updatedProduct = products.find((p) => p.barcode === "EDIT_BAR_01")!;
       expect(updatedProduct.stock).toBe(8);
-      expect(updatedProduct.mrp).toBe(60);
-      expect(updatedProduct.price).toBe(55);
+      expect(updatedProduct.mrp).toBe(50);
+      expect(updatedProduct.price).toBe(45);
 
-      console.log("billing product mrp & price database update test passed!");
+      console.log("billing temporary mrp & price override test passed!");
     });
   });
 
@@ -1063,29 +1064,44 @@ describe("Retail Sathi Backend Logic Tests", () => {
     });
 
     it("should show updated loyalty points on receipt for existing customer (45 + 8 = 53 pts) and new customer (8 pts)", async () => {
-      // 1. Existing customer already in database with 45 loyalty points
-      const custId = await createCustomer({
-        name: "VIKRAM SINGH",
-        phone: "9876500001",
-        loyalty_points: 45,
-      });
-
-      const initialCust = await fetchCustomers();
-      const vikramBefore = initialCust.find((c) => c.id === custId);
-      expect(vikramBefore?.loyalty_points).toBe(45);
-
       // Create a test product: ₹100 each
       const prod = await createProduct({
         name: "Test Grocery Item",
         category: "Groceries",
         price: 100,
         cost_price: 70,
-        stock: 50,
+        stock: 100,
         unit: "pcs",
         barcode: "990011223344",
       });
 
-      // Existing customer purchases 8 units = ₹800 (gains 8 points)
+      // 1. Existing customer in database with a prior saved purchase of ₹4500 (45 loyalty points)
+      const custId = await createCustomer({
+        name: "VIKRAM SINGH",
+        phone: "9876500001",
+      });
+
+      await createSale({
+        customer_name: "VIKRAM SINGH",
+        customer_phone: "9876500001",
+        payment_mode: "Cash",
+        paid_amount: 4500,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Test Grocery Item",
+            barcode: "990011223344",
+            price: 100,
+            quantity: 45,
+          },
+        ],
+      });
+
+      const initialCust = await fetchCustomers();
+      const vikramBefore = initialCust.find((c) => c.id === custId);
+      expect(vikramBefore?.loyalty_points).toBe(45);
+
+      // Existing customer purchases 8 units = ₹800 (gains 8 points, total saved purchase = ₹5300 => 53 points)
       const vikramSale = await createSale({
         customer_name: "VIKRAM SINGH",
         customer_phone: "9876500001",
@@ -1150,6 +1166,117 @@ describe("Retail Sathi Backend Logic Tests", () => {
       const fetchedPriyaSale = await fetchSaleDetails(newCustSale.id);
       expect(fetchedPriyaSale?.loyalty_points).toBe(8);
       expect(fetchedPriyaSale?.customer_id).toBe(priya?.id);
+    });
+
+    it("should strictly calculate loyalty points only from saved purchase amount when billed twice, deleted, edited, or printed later", async () => {
+      const prod = await createProduct({
+        name: "Basmati Rice 5kg",
+        category: "Groceries",
+        price: 500,
+        cost_price: 400,
+        stock: 50,
+        unit: "bag",
+        barcode: "880011223344",
+      });
+
+      // 1. Customer is billed ₹1000 (2 bags) -> 10 pts
+      const firstBill = await createSale({
+        customer_name: "AMIT VERMA",
+        customer_phone: "9811122233",
+        payment_mode: "Cash",
+        paid_amount: 1000,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Basmati Rice 5kg",
+            barcode: "880011223344",
+            price: 500,
+            quantity: 2,
+          },
+        ],
+      });
+      expect(firstBill.loyalty_points).toBe(10);
+
+      // 2. Customer is mistakenly billed a second time for ₹1000 -> temporarily 20 pts
+      const duplicateBill = await createSale({
+        customer_name: "AMIT VERMA",
+        customer_phone: "9811122233",
+        payment_mode: "Cash",
+        paid_amount: 1000,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Basmati Rice 5kg",
+            barcode: "880011223344",
+            price: 500,
+            quantity: 2,
+          },
+        ],
+      });
+      expect(duplicateBill.loyalty_points).toBe(20);
+
+      // 3. The mistaken duplicate bill is deleted -> loyalty points MUST strictly return to 10 pts
+      await deleteSale(duplicateBill.id);
+
+      let customers = await fetchCustomers();
+      let amit = customers.find((c) => c.phone === "9811122233");
+      expect(amit?.total_spent).toBe(1000);
+      expect(amit?.loyalty_points).toBe(10);
+      expect(amit?.active_points).toBe(0);
+      expect(amit?.lucky_draw_count).toBe(1);
+
+      // 4. Printing/fetching the first bill receipt later must show strictly 10 pts (not stale/inflated)
+      const receiptLater = await fetchSaleDetails(firstBill.id);
+      expect(receiptLater?.loyalty_points).toBe(10);
+      expect(receiptLater?.points_earned).toBe(10);
+
+      // 5. Editing/updating the saved bill (e.g. before or after printing receipt later) without changing amount
+      // must NOT add points a second time; changing quantity from 2 to 3 (₹1500) must set points strictly to 15
+      const updatedBillSameAmount = await updateSale(firstBill.id, {
+        customer_name: "AMIT VERMA",
+        customer_phone: "9811122233",
+        payment_mode: "Cash",
+        paid_amount: 1000,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Basmati Rice 5kg",
+            barcode: "880011223344",
+            price: 500,
+            quantity: 2,
+          },
+        ],
+      });
+      expect(updatedBillSameAmount.loyalty_points).toBe(10);
+
+      const updatedBillNewAmount = await updateSale(firstBill.id, {
+        customer_name: "AMIT VERMA",
+        customer_phone: "9811122233",
+        payment_mode: "Cash",
+        paid_amount: 1500,
+        items: [
+          {
+            product_id: prod.id,
+            product_name: "Basmati Rice 5kg",
+            barcode: "880011223344",
+            price: 500,
+            quantity: 3,
+          },
+        ],
+      });
+      expect(updatedBillNewAmount.loyalty_points).toBe(15);
+
+      customers = await fetchCustomers();
+      amit = customers.find((c) => c.phone === "9811122233");
+      expect(amit?.total_spent).toBe(1500);
+      expect(amit?.loyalty_points).toBe(15);
+
+      // 6. Deleting the remaining bill leaves ₹0 saved purchases -> strictly 0 points
+      await deleteSale(firstBill.id);
+      customers = await fetchCustomers();
+      amit = customers.find((c) => c.phone === "9811122233");
+      expect(amit?.total_spent).toBe(0);
+      expect(amit?.loyalty_points).toBe(0);
     });
   });
 

@@ -12,6 +12,10 @@ import {
   saveDevicePrinterSettings,
 } from "../../../services/deviceSettingsService";
 import { getDb } from "../../../services/database";
+import {
+  calculateLoyaltyPoints,
+  getCustomerTotalSpent,
+} from "../../customers/services/customerService";
 
 export interface CheckoutPaymentDetails {
   paymentMode: string;
@@ -152,8 +156,8 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
     customerPhone.trim() ||
       (customerName.trim() && customerName.trim().toLowerCase() !== "walk-in customer")
   );
-  const earnedLoyaltyPoints = Math.floor(grandTotal / 100);
-  const [existingLoyaltyPoints, setExistingLoyaltyPoints] = useState<number>(0);
+  const earnedLoyaltyPoints = calculateLoyaltyPoints(grandTotal);
+  const [existingTotalSpent, setExistingTotalSpent] = useState<number>(0);
   const [existingCustomerId, setExistingCustomerId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -162,25 +166,29 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
     const name = customerName.trim();
     getDb().then(async (db) => {
       try {
-        const rows = await db.select<{ id: number; loyalty_points: number }[]>(
-          "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+        let canonicalPhone = phone;
+        let canonicalName = name;
+        const rows = await db.select<{ id: number; name: string; phone: string }[]>(
+          "SELECT id, name, phone FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
           [phone, name]
         );
         if (rows.length > 0) {
           setExistingCustomerId(rows[0].id);
-          setExistingLoyaltyPoints(Number(rows[0].loyalty_points) || 0);
+          if (rows[0].phone && rows[0].phone.trim()) canonicalPhone = rows[0].phone.trim();
+          if (rows[0].name && rows[0].name.trim()) canonicalName = rows[0].name.trim();
         } else {
           setExistingCustomerId(null);
-          setExistingLoyaltyPoints(0);
         }
+        const { spent } = await getCustomerTotalSpent(canonicalPhone, canonicalName);
+        setExistingTotalSpent(spent);
       } catch {
         setExistingCustomerId(null);
-        setExistingLoyaltyPoints(0);
+        setExistingTotalSpent(0);
       }
     });
   }, [isOpen, customerPhone, customerName, isNamedCustomer]);
 
-  const projectedLoyaltyPoints = existingLoyaltyPoints + earnedLoyaltyPoints;
+  const projectedLoyaltyPoints = calculateLoyaltyPoints(existingTotalSpent + grandTotal);
 
   // Pagination
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
