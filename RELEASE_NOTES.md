@@ -1,3 +1,25 @@
+# Retail Sathi v0.3.4 - Accurate Customer Loyalty Points & Temporary POS Price Overrides
+
+### 🚀 Key Fixes & Enhancements
+- **Strict Purchase-Based Loyalty Points Calculation**:
+  - Customer loyalty points (`1 pt per ₹100`) are now strictly calculated from the total purchase amount (`grand_total`) saved under the customer's name/profile in `sales`.
+  - Deleting a mistaken or duplicate bill immediately reduces the customer's loyalty points to match their remaining saved purchases (or `0` if no purchases remain).
+  - Editing a sale or processing a return recalculates loyalty points accurately without re-adding points or dues a second time.
+  - Viewing or printing a saved receipt later always resolves the customer's accurate loyalty points from their saved purchase history.
+  - Added a direct **Receipt** button in Customer Purchase History to view/print saved invoices without opening the Edit modal.
+- **Temporary POS Cart MRP & Selling Rate Overrides**:
+  - Editing MRP or Selling Price in the POS billing cart now applies only to that specific customer's bill and no longer overwrites the product's stored MRP or selling price in the inventory database.
+
+---
+
+# Retail Sathi v0.3.3 - Eliminate 3-Second Background `exec_sql` RPC Spam
+
+### 🚀 Key Fixes
+- **Stopped 3-Second `exec_sql` Loop During Billing/Customer Refresh**: Fixed an issue in `fetchCustomers()` where `db.execute("UPDATE customers SET name = UPPER(name) ...")` was called on every 2.5s–3s background UI refresh (`useDbRefresh`), enqueuing a no-op cloud `sync_job` and calling `POST /rest/v1/rpc/exec_sql` every 3 seconds even when the counter was idle.
+- **No-Op Update Guard in Sync Interceptor**: `db.execute` now ignores `UPDATE` statements that affect `0` rows locally so redundant updates are never queued for Supabase.
+
+---
+
 # Retail Sathi v0.3.2 - New Supabase Cloud Migration & Low-Egress Sync Optimization
 
 ### 🚀 Key Enhancements & Fixes

@@ -155,6 +155,10 @@ function setupSyncInterceptor(db: Database) {
     // 2. Check if this query affects a syncable business table
     const table = getSyncTable(query);
     if (table) {
+      const isUpdate = /^\s*UPDATE\s+/i.test(query);
+      if (isUpdate && result.rowsAffected === 0) {
+        return result;
+      }
       try {
         const syncQuery = prepareSyncQuery(
           query,

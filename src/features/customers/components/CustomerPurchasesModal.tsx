@@ -8,25 +8,30 @@ import {
 import { Pagination } from "../../../components/common/Pagination";
 import { EditSaleModal } from "../../sales/components/EditSaleModal";
 import { DeleteSaleModal } from "../../sales/components/DeleteSaleModal";
+import { ReceiptModal } from "../../billing/components/ReceiptModal";
+import { fetchSaleDetails } from "../../billing/services/billingService";
 
 interface CustomerPurchasesModalProps {
   customer: Customer | null;
   isOpen: boolean;
   onClose: () => void;
+  onPurchasesChanged?: () => void;
 }
 
 export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
   customer,
   isOpen,
   onClose,
+  onPurchasesChanged,
 }) => {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Edit & Delete modal states
+  // Edit, Delete & Receipt modal states
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
+  const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
 
   // Date Filter State
   const [startDate, setStartDate] = useState<string>("");
@@ -102,6 +107,22 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
     } finally {
       setLoadingItems(false);
     }
+  }
+
+  async function handleOpenReceipt(sale: Sale) {
+    try {
+      const fullSale = await fetchSaleDetails(sale.id);
+      if (fullSale) {
+        setReceiptSale(fullSale);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch sale receipt details:", err);
+    }
+  }
+
+  async function handlePurchasesModified() {
+    await loadPurchases();
+    onPurchasesChanged?.();
   }
 
   // Filter sales by date range selector
@@ -391,6 +412,14 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
                             <button
                               type="button"
                               className="btn-icon edit-btn"
+                              onClick={() => handleOpenReceipt(s)}
+                              title="View / Print Receipt"
+                            >
+                              Receipt
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-icon edit-btn"
                               onClick={() => setEditingSale(s)}
                               title="Edit Sale Record"
                               style={{
@@ -461,7 +490,7 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
             isOpen={Boolean(editingSale)}
             sale={editingSale}
             onClose={() => setEditingSale(null)}
-            onSaleUpdated={loadPurchases}
+            onSaleUpdated={handlePurchasesModified}
           />
         )}
 
@@ -470,7 +499,14 @@ export const CustomerPurchasesModal: React.FC<CustomerPurchasesModalProps> = ({
             isOpen={Boolean(deletingSale)}
             sale={deletingSale}
             onClose={() => setDeletingSale(null)}
-            onSaleDeleted={loadPurchases}
+            onSaleDeleted={handlePurchasesModified}
+          />
+        )}
+
+        {receiptSale && (
+          <ReceiptModal
+            sale={receiptSale}
+            onClose={() => setReceiptSale(null)}
           />
         )}
       </div>

@@ -1,10 +1,68 @@
 import { getDb } from "../../../services/database";
 import { notifyDbUpdated } from "../../../services/syncProcessor";
 import { Sale, SaleItem, CreateSaleInput, UpdateSaleInput } from "../types";
-import { recordCustomerSale, calculateLoyaltyPoints } from "../../customers/services/customerService";
+import {
+  recordCustomerSale,
+  calculateLoyaltyPoints,
+  getCustomerTotalSpent,
+} from "../../customers/services/customerService";
 import { generateInvoiceInfo, getRealTime } from "../../../services/realTimeService";
 import { parseSaleDate } from "../../../utils/dateUtils";
 import { invoiceToEan13 } from "../../../utils/ean13";
+
+function extractSaleDueAmount(saleObj: {
+  due_amount?: number;
+  payment_mode?: string;
+  grand_total: number;
+}): number {
+  if (saleObj.due_amount !== undefined && saleObj.due_amount >= 0) {
+    return saleObj.due_amount;
+  }
+  const mode = (saleObj.payment_mode || "").trim();
+  const match = mode.match(/Due:\s*₹?\s*([\d.]+)/i);
+  if (match && match[1]) {
+    return parseFloat(match[1]) || 0;
+  }
+  if (mode.toLowerCase() === "due" || mode.toLowerCase() === "credit") {
+    return saleObj.grand_total;
+  }
+  return 0;
+}
+
+async function resolveSaleCustomerLoyalty(sale: Sale): Promise<void> {
+  const phone = (sale.customer_phone || "").trim();
+  const name = (sale.customer_name || "").trim();
+  const isNamed = Boolean(phone || (name && name.toLowerCase() !== "walk-in customer"));
+  if (!isNamed) return;
+
+  try {
+    const db = await getDb();
+    let canonicalPhone = phone;
+    let canonicalName = name;
+
+    const custRows = await db.select<{ id: number; name: string; phone: string }[]>(
+      "SELECT id, name, phone FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+      [phone, name]
+    );
+    if (custRows.length > 0) {
+      if (!sale.customer_id) {
+        sale.customer_id = custRows[0].id;
+      }
+      if (custRows[0].phone && custRows[0].phone.trim()) {
+        canonicalPhone = custRows[0].phone.trim();
+      }
+      if (custRows[0].name && custRows[0].name.trim()) {
+        canonicalName = custRows[0].name.trim();
+      }
+    }
+
+    const { spent } = await getCustomerTotalSpent(canonicalPhone, canonicalName);
+    sale.loyalty_points = calculateLoyaltyPoints(spent);
+    sale.points_earned = calculateLoyaltyPoints(sale.grand_total);
+  } catch {
+    // ignore
+  }
+}
 
 export async function createSale(input: CreateSaleInput): Promise<Sale> {
   const db = await getDb();
@@ -141,18 +199,11 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
       ]
     );
 
-    // Deduct stock and update mrp & price in products table if modified
-    if (item.mrp !== undefined && item.mrp > 0) {
-      await db.execute(
-        "UPDATE products SET stock = stock - $1, price = $2, mrp = $3 WHERE id = $4",
-        [item.quantity, item.price, item.mrp, item.product_id]
-      );
-    } else {
-      await db.execute(
-        "UPDATE products SET stock = stock - $1, price = $2 WHERE id = $3",
-        [item.quantity, item.price, item.product_id]
-      );
-    }
+    // Deduct stock only (edited MRP and selling price in billing are temporary for this bill only)
+    await db.execute(
+      "UPDATE products SET stock = stock - $1 WHERE id = $2",
+      [item.quantity, item.product_id]
+    );
 
     saleItems.push({
       sale_id: saleId,
@@ -272,31 +323,7 @@ export async function fetchSaleDetails(saleId: number): Promise<Sale | null> {
   );
   sale.items = items;
 
-  // Fallback to customer table loyalty points and customer ID if not stored on historical sale
-  if (
-    (!sale.customer_id || sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
-    (sale.customer_phone || (sale.customer_name && sale.customer_name.toLowerCase() !== "walk-in customer"))
-  ) {
-    try {
-      const custRows = await db.select<{ id: number; loyalty_points: number }[]>(
-        "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
-        [sale.customer_phone || "", sale.customer_name || ""]
-      );
-      if (custRows.length > 0) {
-        if (!sale.customer_id) {
-          sale.customer_id = custRows[0].id;
-        }
-        if (
-          (sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
-          custRows[0].loyalty_points > 0
-        ) {
-          sale.loyalty_points = custRows[0].loyalty_points;
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
+  await resolveSaleCustomerLoyalty(sale);
 
   return sale;
 }
@@ -359,31 +386,7 @@ export async function fetchSaleByInvoice(invoiceNo: string): Promise<Sale | null
   );
   sale.items = items;
 
-  // Fallback to customer table loyalty points and customer ID if not stored on historical sale
-  if (
-    (!sale.customer_id || sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
-    (sale.customer_phone || (sale.customer_name && sale.customer_name.toLowerCase() !== "walk-in customer"))
-  ) {
-    try {
-      const custRows = await db.select<{ id: number; loyalty_points: number }[]>(
-        "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
-        [sale.customer_phone || "", sale.customer_name || ""]
-      );
-      if (custRows.length > 0) {
-        if (!sale.customer_id) {
-          sale.customer_id = custRows[0].id;
-        }
-        if (
-          (sale.loyalty_points === undefined || sale.loyalty_points === null || sale.loyalty_points === 0) &&
-          custRows[0].loyalty_points > 0
-        ) {
-          sale.loyalty_points = custRows[0].loyalty_points;
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
+  await resolveSaleCustomerLoyalty(sale);
 
   return sale;
 }
@@ -594,24 +597,137 @@ export async function updateSale(
     });
   }
 
-  // 8. Record sale on customer profile
+  // 8. Recalculate customer loyalty points and adjust dues strictly from saved purchases
+  let updatedLoyaltyPoints: number | undefined;
+  let earnedLoyaltyPoints: number | undefined;
+  let updatedCustomerId: number | undefined;
   try {
     const firstProductId = input.items[0]?.product_id;
-    await recordCustomerSale(
-      input.customer_phone || "",
-      input.customer_name || "",
-      grandTotal,
-      input.payment_mode || "Cash",
-      firstProductId,
-      input.due_amount
+    const oldSaleDue = extractSaleDueAmount(oldSale);
+    const newSaleDue = extractSaleDueAmount({
+      due_amount: input.due_amount,
+      payment_mode: formattedPaymentMode,
+      grand_total: grandTotal,
+    });
+
+    const oldPhone = (oldSale.customer_phone || "").trim();
+    const oldName = (oldSale.customer_name || "").trim();
+    const newPhone = (input.customer_phone || "").trim();
+    const newName = (input.customer_name || "").trim();
+
+    let oldCust: { id: number; name: string; phone: string; dues: number } | null = null;
+    if (oldPhone) {
+      const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
+        "SELECT id, name, phone, dues FROM customers WHERE phone = $1 LIMIT 1",
+        [oldPhone]
+      );
+      if (rows.length > 0) oldCust = rows[0];
+    }
+    if (!oldCust && oldName && oldName.toLowerCase() !== "walk-in customer") {
+      const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
+        "SELECT id, name, phone, dues FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
+        [oldName]
+      );
+      if (rows.length > 0) oldCust = rows[0];
+    }
+
+    let newCust: { id: number; name: string; phone: string; dues: number } | null = null;
+    if (newPhone) {
+      const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
+        "SELECT id, name, phone, dues FROM customers WHERE phone = $1 LIMIT 1",
+        [newPhone]
+      );
+      if (rows.length > 0) newCust = rows[0];
+    }
+    if (!newCust && newName && newName.toLowerCase() !== "walk-in customer") {
+      const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
+        "SELECT id, name, phone, dues FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
+        [newName]
+      );
+      if (rows.length > 0) newCust = rows[0];
+    }
+
+    // If customer was changed on this invoice, revert dues & recalculate points for the old customer
+    if (oldCust && (!newCust || oldCust.id !== newCust.id)) {
+      const oldRevertedDues = Math.max(0, (Number(oldCust.dues) || 0) - oldSaleDue);
+      const { spent: oldSpent } = await getCustomerTotalSpent(
+        oldCust.phone || oldPhone,
+        oldCust.name || oldName
+      );
+      const oldRecalcPts = calculateLoyaltyPoints(oldSpent);
+      await db.execute(
+        "UPDATE customers SET dues = $1, loyalty_points = $2 WHERE id = $3",
+        [oldRevertedDues, oldRecalcPts, oldCust.id]
+      );
+    }
+
+    const isNewNamedCustomer = Boolean(
+      newPhone || (newName && newName.toLowerCase() !== "walk-in customer")
     );
+
+    if (isNewNamedCustomer) {
+      const canonicalPhone = (newCust?.phone || newPhone).trim();
+      const canonicalName = (
+        newCust?.name && newCust.name.trim()
+          ? newCust.name.trim()
+          : newName && newName.toLowerCase() !== "walk-in customer"
+          ? newName
+          : `Customer (${canonicalPhone})`
+      ).toUpperCase();
+
+      const { spent: newTotalSpent } = await getCustomerTotalSpent(
+        canonicalPhone,
+        canonicalName
+      );
+      updatedLoyaltyPoints = calculateLoyaltyPoints(newTotalSpent);
+      earnedLoyaltyPoints = calculateLoyaltyPoints(grandTotal);
+
+      if (newCust) {
+        updatedCustomerId = newCust.id;
+        const dueDiff =
+          oldCust && oldCust.id === newCust.id ? newSaleDue - oldSaleDue : newSaleDue;
+        const updatedDues = Math.max(0, (Number(newCust.dues) || 0) + dueDiff);
+        if (firstProductId) {
+          await db.execute(
+            "UPDATE customers SET purchase_item_id = $1, dues = $2, loyalty_points = $3 WHERE id = $4",
+            [firstProductId, updatedDues, updatedLoyaltyPoints, newCust.id]
+          );
+        } else {
+          await db.execute(
+            "UPDATE customers SET dues = $1, loyalty_points = $2 WHERE id = $3",
+            [updatedDues, updatedLoyaltyPoints, newCust.id]
+          );
+        }
+      } else {
+        const insertRes = await db.execute(
+          `INSERT INTO customers (name, phone, address, purchase_item_id, loyalty_points, dues)
+           VALUES ($1, $2, '', $3, $4, $5)`,
+          [
+            canonicalName,
+            canonicalPhone,
+            firstProductId ?? null,
+            updatedLoyaltyPoints,
+            newSaleDue,
+          ]
+        );
+        updatedCustomerId = insertRes.lastInsertId ?? undefined;
+      }
+
+      await db.execute(
+        "UPDATE sales SET loyalty_points = $1, customer_id = $2 WHERE id = $3",
+        [updatedLoyaltyPoints, updatedCustomerId ?? null, saleId]
+      );
+    }
   } catch (custErr) {
     console.error("Failed to sync customer sale record on update:", custErr);
   }
 
+  notifyDbUpdated("all");
+
   return {
     id: saleId,
     invoice_no: oldSale.invoice_no,
+    customer_id: updatedCustomerId,
     customer_name: input.customer_name || "Walk-in Customer",
     customer_phone: input.customer_phone || "",
     total_amount: dbTotalAmount,
@@ -623,6 +739,8 @@ export async function updateSale(
     due_amount: input.due_amount,
     cash_paid: input.cash_paid,
     upi_paid: input.upi_paid,
+    loyalty_points: updatedLoyaltyPoints,
+    points_earned: earnedLoyaltyPoints,
     marketing_person_id: newMktId,
     created_at: oldSale.created_at,
     items: newSaleItems,
@@ -723,44 +841,36 @@ export async function deleteSale(saleId: number): Promise<void> {
   const phone = (sale.customer_phone || "").trim();
   const name = (sale.customer_name || "").trim();
   let customerId: number | null = null;
+  let canonicalPhone = phone;
+  let canonicalName = name;
 
   if (phone || (name && name.toLowerCase() !== "walk-in customer")) {
     try {
       if (phone) {
-        const rows = await db.select<{ id: number; dues: number }[]>(
-          "SELECT id, dues FROM customers WHERE phone = $1 LIMIT 1",
+        const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
+          "SELECT id, name, phone, dues FROM customers WHERE phone = $1 LIMIT 1",
           [phone]
         );
         if (rows.length > 0) {
           customerId = rows[0].id;
+          if (rows[0].phone && rows[0].phone.trim()) canonicalPhone = rows[0].phone.trim();
+          if (rows[0].name && rows[0].name.trim()) canonicalName = rows[0].name.trim();
         }
       }
       if (!customerId && name && name.toLowerCase() !== "walk-in customer") {
-        const rows = await db.select<{ id: number; dues: number }[]>(
-          "SELECT id, dues FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
+        const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
+          "SELECT id, name, phone, dues FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
           [name]
         );
         if (rows.length > 0) {
           customerId = rows[0].id;
+          if (rows[0].phone && rows[0].phone.trim()) canonicalPhone = rows[0].phone.trim();
+          if (rows[0].name && rows[0].name.trim()) canonicalName = rows[0].name.trim();
         }
       }
 
       if (customerId) {
-        let saleDueAmount = 0;
-        if (sale.due_amount !== undefined && sale.due_amount > 0) {
-          saleDueAmount = sale.due_amount;
-        } else if (sale.payment_mode) {
-          const match = sale.payment_mode.match(/Due:\s*₹?\s*([\d.]+)/i);
-          if (match && match[1]) {
-            saleDueAmount = parseFloat(match[1]) || 0;
-          } else if (
-            sale.payment_mode.toLowerCase() === "due" ||
-            sale.payment_mode.toLowerCase() === "credit"
-          ) {
-            saleDueAmount = sale.grand_total;
-          }
-        }
-
+        const saleDueAmount = extractSaleDueAmount(sale);
         if (saleDueAmount > 0) {
           await db.execute(
             "UPDATE customers SET dues = MAX(0, dues - $1) WHERE id = $2",
@@ -777,29 +887,14 @@ export async function deleteSale(saleId: number): Promise<void> {
   await db.execute("DELETE FROM sale_items WHERE invoice_no = $1", [sale.invoice_no]);
   await db.execute("DELETE FROM sales WHERE invoice_no = $1", [sale.invoice_no]);
 
-  // 7. Recalculate customer loyalty points after sale deletion
-  if (customerId && (phone || name)) {
+  // 7. Strictly recalculate customer loyalty points from remaining purchase amount saved in customer name
+  if (customerId && (canonicalPhone || canonicalName)) {
     try {
-      const custRows = await db.select<{ loyalty_points: number }[]>(
-        "SELECT loyalty_points FROM customers WHERE id = $1",
-        [customerId]
+      const { spent: totalSpent } = await getCustomerTotalSpent(
+        canonicalPhone,
+        canonicalName
       );
-      const currentPts = custRows.length > 0 ? Number(custRows[0].loyalty_points) || 0 : 0;
-      const salePoints = sale.points_earned !== undefined ? sale.points_earned : calculateLoyaltyPoints(sale.grand_total);
-
-      const spentRows = await db.select<{ total_spent: number }[]>(
-        `SELECT COALESCE(SUM(grand_total), 0) as total_spent 
-         FROM sales 
-         WHERE (customer_phone = $1 AND customer_phone IS NOT NULL AND customer_phone != '') 
-            OR (LOWER(customer_name) = LOWER($2) AND customer_name IS NOT NULL AND customer_name != '')`,
-        [phone, name]
-      );
-      const totalSpent =
-        spentRows.length > 0 ? Number(spentRows[0].total_spent) || 0 : 0;
-      const spentBasedPoints = calculateLoyaltyPoints(totalSpent);
-
-      const newPoints =
-        totalSpent > 0 ? spentBasedPoints : Math.max(0, currentPts - salePoints);
+      const newPoints = calculateLoyaltyPoints(totalSpent);
       await db.execute(
         "UPDATE customers SET loyalty_points = $1 WHERE id = $2",
         [newPoints, customerId]

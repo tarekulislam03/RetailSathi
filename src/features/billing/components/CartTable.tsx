@@ -285,7 +285,7 @@ const CartTableRow: React.FC<CartTableRowProps> = ({
               borderRadius: "4px",
               background: "#ffffff",
             }}
-            title="Edit MRP (affects database upon sale)"
+            title="Edit MRP for this bill only (does not change inventory price)"
           />
         </div>
       </td>
@@ -313,7 +313,7 @@ const CartTableRow: React.FC<CartTableRowProps> = ({
               borderRadius: "4px",
               background: "#f0fdf4",
             }}
-            title="Edit Selling Price (affects database upon sale)"
+            title="Edit Selling Price for this bill only (does not change inventory price)"
           />
         </div>
       </td>

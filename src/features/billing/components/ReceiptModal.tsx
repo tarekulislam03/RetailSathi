@@ -15,6 +15,10 @@ import {
   saveDevicePrinterSettings,
 } from "../../../services/deviceSettingsService";
 import { getDb } from "../../../services/database";
+import {
+  calculateLoyaltyPoints,
+  getCustomerTotalSpent,
+} from "../../customers/services/customerService";
 
 interface ReceiptModalProps {
   sale: Sale;
@@ -68,24 +72,24 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
     const phone = sale.customer_phone?.trim();
     const name = sale.customer_name?.trim();
-    if (
-      (!sale.customer_id || sale.loyalty_points === undefined) &&
-      (phone || (name && name.toLowerCase() !== "walk-in customer"))
-    ) {
+    if (phone || (name && name.toLowerCase() !== "walk-in customer")) {
       getDb().then(async (db) => {
         try {
-          const rows = await db.select<{ id: number; loyalty_points: number }[]>(
-            "SELECT id, loyalty_points FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+          const rows = await db.select<{ id: number; name: string; phone: string }[]>(
+            "SELECT id, name, phone FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
             [phone || "", name || ""]
           );
+          let canonicalPhone = phone || "";
+          let canonicalName = name || "";
           if (rows.length > 0) {
             if (!sale.customer_id) {
               setCustomerIdState(rows[0].id);
             }
-            if (sale.loyalty_points === undefined) {
-              setCustomerLoyaltyPoints(Number(rows[0].loyalty_points) || 0);
-            }
+            canonicalPhone = rows[0].phone || canonicalPhone;
+            canonicalName = rows[0].name || canonicalName;
           }
+          const { spent } = await getCustomerTotalSpent(canonicalPhone, canonicalName);
+          setCustomerLoyaltyPoints(calculateLoyaltyPoints(spent));
         } catch {
           // ignore
         }
@@ -120,8 +124,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
       const saleToPrint: Sale = {
         ...sale,
-        customer_id: sale.customer_id ?? customerIdState,
-        loyalty_points: sale.loyalty_points ?? customerLoyaltyPoints,
+        customer_id: customerIdState ?? sale.customer_id,
+        loyalty_points: customerLoyaltyPoints ?? sale.loyalty_points,
       };
 
       const res = await printReceiptEscPos(saleToPrint, {
@@ -416,13 +420,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </span>
             </div>
 
-            {(sale.loyalty_points !== undefined || customerLoyaltyPoints !== undefined) && (
+            {(customerLoyaltyPoints !== undefined || sale.loyalty_points !== undefined) && (
               <div>
                 <span style={{ color: "#64748b", display: "block", fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700 }}>
                   Loyalty Points
                 </span>
                 <strong style={{ color: "#0066cc" }}>
-                  {(sale.loyalty_points ?? customerLoyaltyPoints) || 0} pts
+                  {(customerLoyaltyPoints ?? sale.loyalty_points) || 0} pts
                 </strong>
                 {sale.points_earned !== undefined && sale.points_earned > 0 && (
                   <span style={{ display: "block", color: "#16a34a", fontSize: "0.76rem" }}>
@@ -568,7 +572,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
             )}
 
-            {(sale.loyalty_points !== undefined || customerLoyaltyPoints !== undefined) && (
+            {(customerLoyaltyPoints !== undefined || sale.loyalty_points !== undefined) && (
               <div
                 style={{
                   display: "flex",
@@ -583,7 +587,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               >
                 <span>Total Loyalty Points:</span>
                 <span style={{ fontWeight: 700 }}>
-                  {(sale.loyalty_points ?? customerLoyaltyPoints) || 0} pts
+                  {(customerLoyaltyPoints ?? sale.loyalty_points) || 0} pts
                   {sale.points_earned !== undefined && sale.points_earned > 0 && (
                     <span style={{ color: "#16a34a", marginLeft: "4px" }}>
                       (+{sale.points_earned} this bill)
