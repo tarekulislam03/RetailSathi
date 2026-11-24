@@ -3,11 +3,69 @@ import { getActiveOrFirstStore } from "../../stores/services/storeService";
 import {
   GstInwardItem,
   GstOutwardItem,
+  GstRateBreakdown,
   GstReportData,
   GstReportFilter,
   GstTaxSummary,
   StoreReportInfo,
 } from "../types";
+
+/**
+ * Aggregates inward (purchases) and outward (sales) GST amounts grouped by GST rate slab.
+ */
+export function computeGstRateBreakdown(
+  inwardItems: GstInwardItem[],
+  outwardItems: GstOutwardItem[]
+): GstRateBreakdown[] {
+  const byRate = new Map<number, GstRateBreakdown>();
+
+  const getOrCreate = (rawRate: number): GstRateBreakdown => {
+    const rate = Number(rawRate) || 0;
+    let entry = byRate.get(rate);
+    if (!entry) {
+      entry = {
+        gstRate: rate,
+        inwardTaxable: 0,
+        inwardCgst: 0,
+        inwardSgst: 0,
+        inwardGst: 0,
+        inwardAmount: 0,
+        outwardTaxable: 0,
+        outwardCgst: 0,
+        outwardSgst: 0,
+        outwardGst: 0,
+        outwardAmount: 0,
+        netGst: 0,
+      };
+      byRate.set(rate, entry);
+    }
+    return entry;
+  };
+
+  for (const item of inwardItems) {
+    const entry = getOrCreate(item.gst_rate);
+    entry.inwardTaxable += item.taxable_value;
+    entry.inwardCgst += item.cgst;
+    entry.inwardSgst += item.sgst;
+    entry.inwardGst += item.cgst + item.sgst;
+    entry.inwardAmount += item.total_amount;
+  }
+
+  for (const item of outwardItems) {
+    const entry = getOrCreate(item.gst_rate);
+    entry.outwardTaxable += item.taxable_value;
+    entry.outwardCgst += item.cgst;
+    entry.outwardSgst += item.sgst;
+    entry.outwardGst += item.cgst + item.sgst;
+    entry.outwardAmount += item.total_amount;
+  }
+
+  const result = Array.from(byRate.values()).sort((a, b) => a.gstRate - b.gstRate);
+  for (const entry of result) {
+    entry.netGst = entry.outwardGst - entry.inwardGst;
+  }
+  return result;
+}
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -212,14 +270,19 @@ export async function fetchGstReportData(
       pi.purchase_price,
       pi.quantity,
       pi.subtotal,
-      COALESCE(pi.gst_rate, pr.gst_rate, 0) AS gst_rate,
+      COALESCE(
+        pi.gst_rate,
+        pr.gst_rate,
+        (SELECT pr2.gst_rate FROM products pr2 WHERE pr2.barcode = pi.barcode AND pi.barcode IS NOT NULL AND pi.barcode != '' LIMIT 1),
+        0
+      ) AS gst_rate,
       p.invoice_no,
       p.supplier_name,
       p.gst_no AS supplier_gstin,
       COALESCE(p.purchase_date, p.created_at) AS date_str
     FROM purchase_items pi
     JOIN purchases p ON pi.purchase_id = p.id
-    LEFT JOIN products pr ON (pi.product_id = pr.id OR (pi.barcode = pr.barcode AND pr.barcode IS NOT NULL AND pr.barcode != ''))
+    LEFT JOIN products pr ON pi.product_id = pr.id
     ORDER BY COALESCE(p.purchase_date, p.created_at) DESC, p.id DESC
   `);
 
@@ -243,14 +306,19 @@ export async function fetchGstReportData(
       COALESCE(pr.gst_rate, 0) AS gst_rate,
       COALESCE(pr.category, 'General') AS category
     FROM sale_items si
-    JOIN sales s ON (si.invoice_no IS NOT NULL AND si.invoice_no != '' AND si.invoice_no = s.invoice_no) OR (si.sale_id = s.id)
+    JOIN sales s ON (si.sale_id = s.id) OR (si.invoice_no IS NOT NULL AND si.invoice_no != '' AND si.invoice_no = s.invoice_no)
     LEFT JOIN products pr ON si.product_id = pr.id
-    ORDER BY s.created_at DESC, s.id DESC
+    ORDER BY (si.sale_id = s.id) DESC, s.created_at DESC, s.id DESC
   `);
 
-  // Process Inward Items
+  // Process Inward Items (deduplicate by item_id to prevent join multiplication)
+  const seenInwardIds = new Set<number>();
   const inwardItems: GstInwardItem[] = [];
   for (const r of purchaseRows) {
+    if (r.item_id != null) {
+      if (seenInwardIds.has(r.item_id)) continue;
+      seenInwardIds.add(r.item_id);
+    }
     if (!isDateInRange(r.date_str, filter?.startDate, filter?.endDate)) {
       continue;
     }
@@ -293,9 +361,14 @@ export async function fetchGstReportData(
     });
   }
 
-  // Process Outward Items
+  // Process Outward Items (deduplicate by item_id to prevent join multiplication)
+  const seenOutwardIds = new Set<number>();
   const outwardItems: GstOutwardItem[] = [];
   for (const r of saleRows) {
+    if (r.item_id != null) {
+      if (seenOutwardIds.has(r.item_id)) continue;
+      seenOutwardIds.add(r.item_id);
+    }
     if (!isDateInRange(r.date_str, filter?.startDate, filter?.endDate)) {
       continue;
     }

@@ -71,8 +71,18 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
     throw new Error("Cart is empty.");
   }
 
-  // 1. Verify stock availability for all items
+  // 1. Verify stock availability & validate line item numbers (prevent barcode-in-qty/price bugs)
   for (const item of input.items) {
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0 || item.quantity > 10000) {
+      throw new Error(
+        `Invalid quantity (${item.quantity}) for "${item.product_name}". Quantity must be between 1 and 10,000.`
+      );
+    }
+    if (!Number.isFinite(item.price) || item.price < 0 || item.price > 1000000) {
+      throw new Error(
+        `Invalid price (${item.price}) for "${item.product_name}". Price must be between 0 and 1,000,000.`
+      );
+    }
     const rows = await db.select<{ stock: number }[]>(
       "SELECT stock FROM products WHERE id = $1",
       [item.product_id]
