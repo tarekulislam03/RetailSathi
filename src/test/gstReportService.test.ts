@@ -7,6 +7,7 @@ import {
   fetchGstReportData,
   exportGstReportToExcel,
   exportGstReportToPdf,
+  computeGstRateBreakdown,
 } from "../features/reports/services/gstReportService";
 
 describe("GST Compliance & Stock Register Report Tests", () => {
@@ -255,5 +256,142 @@ describe("GST Compliance & Stock Register Report Tests", () => {
     expect(() => {
       exportGstReportToPdf(report, "test_report.pdf");
     }).not.toThrow();
+  });
+
+  it("should compute GST rate-wise breakdown sorted ascending by rate", () => {
+    const empty = computeGstRateBreakdown([], []);
+    expect(empty).toEqual([]);
+
+    const breakdown = computeGstRateBreakdown(
+      [
+        {
+          id: 1,
+          date: "2026-10-01",
+          invoice_no: "P1",
+          supplier_name: "Sup",
+          supplier_gstin: "",
+          product_name: "Zero Rated",
+          barcode: "1",
+          batch_no: "B1",
+          hsn_code: "",
+          category: "Cat",
+          quantity: 1,
+          rate: 100,
+          taxable_value: 100,
+          gst_rate: 0,
+          cgst: 0,
+          sgst: 0,
+          total_amount: 100,
+        },
+        {
+          id: 2,
+          date: "2026-10-01",
+          invoice_no: "P2",
+          supplier_name: "Sup",
+          supplier_gstin: "",
+          product_name: "Five Pct",
+          barcode: "2",
+          batch_no: "B2",
+          hsn_code: "",
+          category: "Cat",
+          quantity: 1,
+          rate: 105,
+          taxable_value: 100,
+          gst_rate: 5,
+          cgst: 2.5,
+          sgst: 2.5,
+          total_amount: 105,
+        },
+      ],
+      [
+        {
+          id: 10,
+          date: "2026-10-02",
+          invoice_no: "S1",
+          customer_name: "Cust",
+          customer_phone: "",
+          product_name: "Five Pct Sale",
+          barcode: "2",
+          hsn_code: "",
+          category: "Cat",
+          quantity: 2,
+          rate: 105,
+          taxable_value: 200,
+          gst_rate: 5,
+          cgst: 5,
+          sgst: 5,
+          total_amount: 210,
+        },
+        {
+          id: 11,
+          date: "2026-10-02",
+          invoice_no: "S2",
+          customer_name: "Cust",
+          customer_phone: "",
+          product_name: "Eighteen Pct Sale",
+          barcode: "3",
+          hsn_code: "",
+          category: "Cat",
+          quantity: 1,
+          rate: 118,
+          taxable_value: 100,
+          gst_rate: 18,
+          cgst: 9,
+          sgst: 9,
+          total_amount: 118,
+        },
+      ]
+    );
+
+    expect(breakdown.map((r) => r.gstRate)).toEqual([0, 5, 18]);
+
+    expect(breakdown[0].inwardTaxable).toBe(100);
+    expect(breakdown[0].inwardGst).toBe(0);
+    expect(breakdown[0].outwardGst).toBe(0);
+    expect(breakdown[0].netGst).toBe(0);
+
+    expect(breakdown[1].inwardGst).toBe(5);
+    expect(breakdown[1].outwardCgst).toBe(5);
+    expect(breakdown[1].outwardSgst).toBe(5);
+    expect(breakdown[1].outwardGst).toBe(10);
+    expect(breakdown[1].netGst).toBe(5);
+
+    expect(breakdown[2].inwardGst).toBe(0);
+    expect(breakdown[2].outwardCgst).toBe(9);
+    expect(breakdown[2].outwardSgst).toBe(9);
+    expect(breakdown[2].outwardGst).toBe(18);
+    expect(breakdown[2].netGst).toBe(18);
+  });
+
+  it("should not duplicate inward or outward items when multiple product batches share a barcode", async () => {
+    // Create 3 batches of the same barcode
+    for (const batch of ["B1", "B2", "B3"]) {
+      await createPurchase({
+        supplier_name: "Batch Supplier",
+        invoice_no: `INV-${batch}`,
+        purchase_date: "2026-10-10",
+        gst_no: "",
+        contact_no: "",
+        items: [
+          {
+            product_name: "Multi-Batch Item",
+            barcode: "8909999999",
+            batch_no: batch,
+            category: "General",
+            purchase_price: 105.0,
+            selling_price: 120.0,
+            gst_rate: 5,
+            quantity: 1,
+            subtotal: 105.0,
+          },
+        ],
+      });
+    }
+
+    const report = await fetchGstReportData();
+    // Should be 3 purchase items total, NOT 3 * 3 = 9
+    expect(report.inwardItems.length).toBe(3);
+    expect(report.summary.totalInwardQty).toBe(3);
+    expect(report.summary.totalInwardAmount).toBeCloseTo(315.0, 2);
   });
 });

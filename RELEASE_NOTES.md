@@ -1,3 +1,15 @@
+# Retail Sathi v0.3.5 - GST Reports Suite, 13-Page CA Audit Pack & POS Validation
+
+### 🚀 Key Features & Enhancements
+- **Complete GST Reports Suite**:
+  - Added GST Reports Gateway with drill-down navigation and breadcrumbs across **GSTR-1** (Summary & Section views: B2B, B2C Large/Small, Nil/Exempt, Credit Notes, HSN Table 12, Documents Issued Table 13), **GSTR-3B** (Tables 3.1, 3.2, 4, 5, 6.1), **HSN Summary** (Sales & Purchases), **Tax Rate-wise Summary** (`0%, 0.25%, 3%, 5%, 12%, 18%, 28%`), **Input vs Output Tax**, **Voucher Register**, and **Invoice View**.
+  - Added **13-Page CA GST Audit Pack** (offline SQLite, Indian digit grouping, A4 PDF, multi-sheet Excel `.xlsx`, and CSV export) including Cover Sheet with Books vs Return reconciliation & sync status, Rate-wise B2B/B2C split, B2B/Purchase registers, Credit/Debit notes, HSN Summary, Documents Issued, Exempt sales, Ineligible ITC, Cancelled/Draft bills, Counter-wise Day-End Cash/UPI/Card summary, and GSTR-3B working sheet.
+- **GST Report Accuracy & POS Input Guards**:
+  - Fixed duplicate row joins in GST report queries when multiple product batches share a barcode.
+  - Added POS validation in `createSale` to prevent barcode scans in Quantity/Price fields.
+
+---
+
 # Retail Sathi v0.3.4 - Accurate Customer Loyalty Points & Temporary POS Price Overrides
 
 ### 🚀 Key Fixes & Enhancements

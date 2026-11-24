@@ -62,6 +62,21 @@ export interface GstTaxSummary {
   netGstPayable: number; // positive = payable, negative = input credit carry forward
 }
 
+export interface GstRateBreakdown {
+  gstRate: number;
+  inwardTaxable: number;
+  inwardCgst: number;
+  inwardSgst: number;
+  inwardGst: number;
+  inwardAmount: number;
+  outwardTaxable: number;
+  outwardCgst: number;
+  outwardSgst: number;
+  outwardGst: number;
+  outwardAmount: number;
+  netGst: number;
+}
+
 export interface StoreReportInfo {
   name: string;
   legal_name?: string;
