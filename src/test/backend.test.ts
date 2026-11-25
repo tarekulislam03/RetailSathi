@@ -1118,8 +1118,9 @@ describe("Retail Sathi Backend Logic Tests", () => {
         ],
       });
 
-      // Updated points and customer ID on receipt/bill should be 53 (45 + 8) and custId
+      // Updated points and customer ID on receipt/bill should be 53 (45 + 8) and active_points 3
       expect(vikramSale.loyalty_points).toBe(53);
+      expect(vikramSale.active_points).toBe(3);
       expect(vikramSale.points_earned).toBe(8);
       expect(vikramSale.customer_id).toBe(custId);
 
@@ -1127,10 +1128,12 @@ describe("Retail Sathi Backend Logic Tests", () => {
       const customersAfterVikram = await fetchCustomers();
       const vikramAfter = customersAfterVikram.find((c) => c.id === custId);
       expect(vikramAfter?.loyalty_points).toBe(53);
+      expect(vikramAfter?.active_points).toBe(3);
 
-      // Verify fetching sale details preserves 53 loyalty points and customer ID
+      // Verify fetching sale details preserves 53 loyalty points, 3 active points, and customer ID
       const fetchedVikramSale = await fetchSaleDetails(vikramSale.id);
       expect(fetchedVikramSale?.loyalty_points).toBe(53);
+      expect(fetchedVikramSale?.active_points).toBe(3);
       expect(fetchedVikramSale?.customer_id).toBe(custId);
 
       // 2. New customer: not previously in database
@@ -1153,6 +1156,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
 
       // Bill should print current loyalty points gained: 8 points
       expect(newCustSale.loyalty_points).toBe(8);
+      expect(newCustSale.active_points).toBe(8);
       expect(newCustSale.points_earned).toBe(8);
 
       // Verify newly created customer in database has 8 points
@@ -1225,9 +1229,10 @@ describe("Retail Sathi Backend Logic Tests", () => {
       expect(amit?.active_points).toBe(0);
       expect(amit?.lucky_draw_count).toBe(1);
 
-      // 4. Printing/fetching the first bill receipt later must show strictly 10 pts (not stale/inflated)
+      // 4. Printing/fetching the first bill receipt later must show strictly 10 pts (not stale/inflated) and 0 active pts
       const receiptLater = await fetchSaleDetails(firstBill.id);
       expect(receiptLater?.loyalty_points).toBe(10);
+      expect(receiptLater?.active_points).toBe(0);
       expect(receiptLater?.points_earned).toBe(10);
 
       // 5. Editing/updating the saved bill (e.g. before or after printing receipt later) without changing amount
@@ -1265,6 +1270,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
         ],
       });
       expect(updatedBillNewAmount.loyalty_points).toBe(15);
+      expect(updatedBillNewAmount.active_points).toBe(5);
 
       customers = await fetchCustomers();
       amit = customers.find((c) => c.phone === "9811122233");

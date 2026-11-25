@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { CartItem } from "../types";
+import { getCartTotalUnits } from "../utils/cartUtils";
 import { Pagination } from "../../../components/common/Pagination";
 import { focusProductSearch } from "./BarcodeSearch";
 
@@ -397,6 +398,7 @@ export const CartTable: React.FC<CartTableProps> = ({
   const prevCartLengthRef = useRef(cart.length);
 
   const totalItems = cart.length;
+  const totalUnits = getCartTotalUnits(cart);
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
 
   useEffect(() => {
@@ -450,7 +452,22 @@ export const CartTable: React.FC<CartTableProps> = ({
   return (
     <div className="card list-card pos-cart-card">
       <div className="list-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2>Current Order Items ({cart.length})</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0 }}>Current Order Items ({cart.length})</h2>
+          <span
+            style={{
+              fontSize: "0.8rem",
+              fontWeight: 700,
+              color: totalUnits > 0 ? "#0369a1" : "#64748b",
+              background: totalUnits > 0 ? "#e0f2fe" : "#f1f5f9",
+              border: totalUnits > 0 ? "1px solid #bae6fd" : "1px solid #cbd5e1",
+              borderRadius: "999px",
+              padding: "2px 10px",
+            }}
+          >
+            Total Units: {totalUnits}
+          </span>
+        </div>
         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {onOpenReturnModal && (
             <button

@@ -22,6 +22,7 @@ export interface Sale {
   upi_paid?: number;
   marketing_person_id?: number | null;
   loyalty_points?: number;
+  active_points?: number;
   points_earned?: number;
   created_at?: string;
   items?: SaleItem[];

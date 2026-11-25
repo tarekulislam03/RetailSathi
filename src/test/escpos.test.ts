@@ -171,8 +171,8 @@ describe("Image-Based Receipt Generator Tests", () => {
     expect(bytes58.length).toBeGreaterThan(50);
   });
 
-  it("should render updated loyalty points and customer ID on receipt for existing and new customers", () => {
-    // Existing customer with 45 points who earned 8 extra points (total 53 pts)
+  it("should render active loyalty points (including current sale) and customer ID on receipt for existing and new customers", () => {
+    // Existing customer with 45 points who earned 8 extra points (lifetime 53 pts -> active 3 pts)
     const existingCustSale: Sale = {
       ...mockSale,
       customer_id: 101,
@@ -182,20 +182,66 @@ describe("Image-Based Receipt Generator Tests", () => {
       points_earned: 8,
     };
 
-    const canvasExisting = createReceiptCanvas(existingCustSale, { paperWidth: 80 });
-    expect(canvasExisting.width).toBe(576);
-    expect(canvasExisting.height).toBeGreaterThan(300);
+    const drawnTexts: string[] = [];
+    const origDocument = (globalThis as any).document;
+    const mockCtx = {
+      fillStyle: "#ffffff",
+      strokeStyle: "#000000",
+      font: "",
+      textAlign: "left",
+      lineWidth: 1,
+      fillRect: () => {},
+      strokeRect: () => {},
+      fillText: (text: string) => {
+        drawnTexts.push(String(text));
+      },
+      measureText: (text: string) => ({ width: String(text).length * 10 }),
+      save: () => {},
+      restore: () => {},
+      beginPath: () => {},
+      setLineDash: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      stroke: () => {},
+      drawImage: () => {},
+      getImageData: (_x: number, _y: number, w: number, h: number) => ({
+        data: new Uint8ClampedArray(w * h * 4),
+      }),
+    };
+    const mockCanvas = {
+      width: 0,
+      height: 0,
+      getContext: (id: string) => (id === "2d" ? mockCtx : null),
+    };
+    (globalThis as any).document = {
+      createElement: (tag: string) => (tag === "canvas" ? mockCanvas : {}),
+    };
+
+    try {
+      const canvasExisting = createReceiptCanvas(existingCustSale, { paperWidth: 80 });
+      expect(canvasExisting.width).toBe(576);
+      expect(canvasExisting.height).toBeGreaterThan(300);
+
+      expect(drawnTexts).toContain("Active Points:");
+      expect(drawnTexts).toContain("Active Loyalty Points:");
+      expect(drawnTexts).toContain("3 pts");
+      expect(drawnTexts).toContain("+8 pts");
+      expect(drawnTexts).not.toContain("53 pts");
+    } finally {
+      (globalThis as any).document = origDocument;
+    }
 
     const bytesExisting = buildReceiptEscPos(existingCustSale, { paperWidth: 80 });
     expect(bytesExisting.length).toBeGreaterThan(100);
 
-    // New customer with 8 points earned (total 8 pts)
+    // New customer with 8 points earned (active 8 pts)
     const newCustSale: Sale = {
       ...mockSale,
       customer_id: 102,
       customer_name: "PRIYA SHARMA",
       customer_phone: "9876500002",
       loyalty_points: 8,
+      active_points: 8,
       points_earned: 8,
     };
 

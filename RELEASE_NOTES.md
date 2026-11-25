@@ -1,3 +1,16 @@
+# Retail Sathi v0.3.6 - Active Loyalty Points on Receipts, Billing Total Units & AI Bill Import Verification
+
+### 🚀 Key Features & Enhancements
+- **Active Loyalty Points on Receipts & Invoice Previews**:
+  - Updated thermal ESC/POS receipts, saved-invoice receipt modals, and checkout invoice previews to display the customer's **Active Loyalty Points** (modulo 10, including the current sale) instead of lifetime points, alongside points earned on the bill.
+- **Total Units Counter in Billing**:
+  - Added a live **Total Units** badge in the POS cart header and a **Total Units** summary row in the checkout panel.
+- **AI Bill Imports Verification Workflow**:
+  - Added an **AI Bill Imports (Pending Review)** section on the Purchases page (shown automatically whenever pending scanned bills exist).
+  - Added a **Review** modal with barcode scanning to verify purchased items: unchanged barcodes import cleanly as new batches, while changed company barcodes let you search the existing product by name, scan/save the new barcode, and import as a new batch.
+
+---
+
 # Retail Sathi v0.3.5 - GST Reports Suite, 13-Page CA Audit Pack & POS Validation
 
 ### 🚀 Key Features & Enhancements

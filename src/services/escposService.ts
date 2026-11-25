@@ -305,6 +305,13 @@ export function createReceiptCanvas(
   y = drawTwoColumnText("Bill No:", `#${sale.invoice_no}`, "bold 20px sans-serif", y);
   y = drawTwoColumnText("Date & Time:", dateStr, "20px sans-serif", y);
 
+  const resolvedActivePoints =
+    sale.active_points !== undefined && sale.active_points !== null
+      ? sale.active_points
+      : sale.loyalty_points !== undefined && sale.loyalty_points !== null
+        ? Math.max(0, Math.floor(sale.loyalty_points)) % 10
+        : undefined;
+
   if (showCustomer && (sale.customer_name || sale.customer_phone || sale.customer_id)) {
     if (sale.customer_id) {
       y = drawTwoColumnText("Customer ID:", `#${sale.customer_id}`, "bold 20px sans-serif", y);
@@ -315,8 +322,8 @@ export function createReceiptCanvas(
     if (sale.customer_phone) {
       y = drawTwoColumnText("Customer Phone:", sale.customer_phone, "20px sans-serif", y); // 1.8rem
     }
-    if (sale.loyalty_points !== undefined && sale.loyalty_points !== null) {
-      y = drawTwoColumnText("Loyalty Points:", `${sale.loyalty_points} pts`, "bold 20px sans-serif", y);
+    if (resolvedActivePoints !== undefined) {
+      y = drawTwoColumnText("Active Points:", `${resolvedActivePoints} pts`, "bold 20px sans-serif", y);
     }
   }
 
@@ -451,16 +458,15 @@ export function createReceiptCanvas(
       (sale.customer_name && sale.customer_name.trim().toLowerCase() !== "walk-in customer")
   );
   if (
-    sale.loyalty_points !== undefined &&
-    sale.loyalty_points !== null &&
-    (sale.loyalty_points > 0 || isNamedOrPhoneCustomer)
+    resolvedActivePoints !== undefined &&
+    (resolvedActivePoints > 0 || (sale.loyalty_points ?? 0) > 0 || isNamedOrPhoneCustomer)
   ) {
     drawDashedLine(y);
     y += 18;
     if (sale.points_earned !== undefined && sale.points_earned > 0) {
       y = drawTwoColumnText("Points Earned:", `+${sale.points_earned} pts`, "20px sans-serif", y);
     }
-    y = drawTwoColumnText("Total Loyalty Points:", `${sale.loyalty_points} pts`, "bold 24px sans-serif", y);
+    y = drawTwoColumnText("Active Loyalty Points:", `${resolvedActivePoints} pts`, "bold 24px sans-serif", y);
   }
 
   // 5. SAVINGS BANNER
