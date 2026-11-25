@@ -349,6 +349,25 @@ async function initTables(db: Database) {
     );
   `);
 
+  // AI Bill Imports table (pending review before importing to purchases & inventory)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS ai_bill_imports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier_name TEXT NOT NULL,
+      invoice_no TEXT NOT NULL,
+      purchase_date TEXT NOT NULL,
+      gst_no TEXT,
+      contact_no TEXT,
+      total_amount REAL NOT NULL DEFAULT 0,
+      items_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      source_note TEXT,
+      purchase_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      verified_at DATETIME
+    );
+  `);
+
   // Suppliers table
   await db.execute(`
     CREATE TABLE IF NOT EXISTS suppliers (

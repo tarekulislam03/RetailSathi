@@ -12,6 +12,14 @@ export function calculateLoyaltyPoints(totalSpent: number): number {
 }
 
 /**
+ * Calculates active loyalty points (resets every 10 points).
+ */
+export function calculateActivePoints(lifetimePoints: number): number {
+  if (!lifetimePoints || lifetimePoints <= 0) return 0;
+  return Math.floor(lifetimePoints) % 10;
+}
+
+/**
  * Queries the total purchase count and total purchase amount (grand_total) saved in the sales table
  * for a customer identified by phone and/or name.
  */
@@ -121,7 +129,7 @@ export async function fetchCustomers(): Promise<Customer[]> {
       total_purchases_count: totalCount,
       total_spent: totalSpent,
       loyalty_points: finalLoyaltyPoints,
-      active_points: finalLoyaltyPoints % 10,
+      active_points: calculateActivePoints(finalLoyaltyPoints),
       lucky_draw_used: luckyDrawUsed,
       lucky_draw_count: eligibleLuckyDraws,
       dues: Number(r.dues) || 0,

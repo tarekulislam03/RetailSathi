@@ -4,6 +4,7 @@ import { Sale, SaleItem, CreateSaleInput, UpdateSaleInput } from "../types";
 import {
   recordCustomerSale,
   calculateLoyaltyPoints,
+  calculateActivePoints,
   getCustomerTotalSpent,
 } from "../../customers/services/customerService";
 import { generateInvoiceInfo, getRealTime } from "../../../services/realTimeService";
@@ -58,6 +59,7 @@ async function resolveSaleCustomerLoyalty(sale: Sale): Promise<void> {
 
     const { spent } = await getCustomerTotalSpent(canonicalPhone, canonicalName);
     sale.loyalty_points = calculateLoyaltyPoints(spent);
+    sale.active_points = calculateActivePoints(sale.loyalty_points);
     sale.points_earned = calculateLoyaltyPoints(sale.grand_total);
   } catch {
     // ignore
@@ -272,6 +274,10 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
     cash_paid: input.cash_paid,
     upi_paid: input.upi_paid,
     loyalty_points: updatedLoyaltyPoints,
+    active_points:
+      updatedLoyaltyPoints !== undefined
+        ? calculateActivePoints(updatedLoyaltyPoints)
+        : undefined,
     points_earned: earnedLoyaltyPoints,
     created_at: localCreatedAt,
     items: saleItems,
@@ -750,6 +756,10 @@ export async function updateSale(
     cash_paid: input.cash_paid,
     upi_paid: input.upi_paid,
     loyalty_points: updatedLoyaltyPoints,
+    active_points:
+      updatedLoyaltyPoints !== undefined
+        ? calculateActivePoints(updatedLoyaltyPoints)
+        : undefined,
     points_earned: earnedLoyaltyPoints,
     marketing_person_id: newMktId,
     created_at: oldSale.created_at,

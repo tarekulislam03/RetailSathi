@@ -14,6 +14,7 @@ import {
 import { getDb } from "../../../services/database";
 import {
   calculateLoyaltyPoints,
+  calculateActivePoints,
   getCustomerTotalSpent,
 } from "../../customers/services/customerService";
 
@@ -189,6 +190,7 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
   }, [isOpen, customerPhone, customerName, isNamedCustomer]);
 
   const projectedLoyaltyPoints = calculateLoyaltyPoints(existingTotalSpent + grandTotal);
+  const projectedActivePoints = calculateActivePoints(projectedLoyaltyPoints);
 
   // Pagination
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -513,10 +515,10 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
                     fontWeight: 700,
                   }}
                 >
-                  Loyalty Points
+                  Active Loyalty Points
                 </span>
                 <strong style={{ color: "#0066cc" }}>
-                  {projectedLoyaltyPoints} pts
+                  {projectedActivePoints} pts
                 </strong>
                 {earnedLoyaltyPoints > 0 && (
                   <span
@@ -812,9 +814,9 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
                   fontWeight: 600,
                 }}
               >
-                <span>Total Loyalty Points:</span>
+                <span>Active Loyalty Points:</span>
                 <span style={{ fontWeight: 700 }}>
-                  {projectedLoyaltyPoints} pts
+                  {projectedActivePoints} pts
                   {earnedLoyaltyPoints > 0 && (
                     <span style={{ color: "#16a34a", marginLeft: "4px" }}>
                       (+{earnedLoyaltyPoints} this bill)

@@ -136,6 +136,22 @@ export function createMockDatabase() {
       FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS ai_bill_imports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier_name TEXT NOT NULL,
+      invoice_no TEXT NOT NULL,
+      purchase_date TEXT NOT NULL,
+      gst_no TEXT,
+      contact_no TEXT,
+      total_amount REAL NOT NULL DEFAULT 0,
+      items_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      source_note TEXT,
+      purchase_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      verified_at DATETIME
+    );
+
     CREATE TABLE IF NOT EXISTS suppliers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,

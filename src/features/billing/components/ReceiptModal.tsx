@@ -17,6 +17,7 @@ import {
 import { getDb } from "../../../services/database";
 import {
   calculateLoyaltyPoints,
+  calculateActivePoints,
   getCustomerTotalSpent,
 } from "../../customers/services/customerService";
 
@@ -122,10 +123,15 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       const activePrinter = targetPrinter !== undefined ? targetPrinter : selectedPrinter;
       const activeWidth = targetPaperWidth !== undefined ? targetPaperWidth : paperWidth;
 
+      const resolvedLifetimePoints = customerLoyaltyPoints ?? sale.loyalty_points;
       const saleToPrint: Sale = {
         ...sale,
         customer_id: customerIdState ?? sale.customer_id,
-        loyalty_points: customerLoyaltyPoints ?? sale.loyalty_points,
+        loyalty_points: resolvedLifetimePoints,
+        active_points:
+          resolvedLifetimePoints !== undefined && resolvedLifetimePoints !== null
+            ? calculateActivePoints(resolvedLifetimePoints)
+            : sale.active_points,
       };
 
       const res = await printReceiptEscPos(saleToPrint, {
@@ -221,6 +227,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const totalMrp = sale.total_amount || (sale.grand_total + (sale.discount || 0));
   const totalSavings = sale.discount || Math.max(0, totalMrp - sale.grand_total);
   const totalQty = items.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
+  const resolvedLifetimePoints = customerLoyaltyPoints ?? sale.loyalty_points;
+  const activeLoyaltyPoints =
+    resolvedLifetimePoints !== undefined && resolvedLifetimePoints !== null
+      ? calculateActivePoints(resolvedLifetimePoints)
+      : sale.active_points;
 
   return (
     <div className="modal-backdrop" style={{ cursor: "default" }}>
@@ -420,13 +431,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </span>
             </div>
 
-            {(customerLoyaltyPoints !== undefined || sale.loyalty_points !== undefined) && (
+            {activeLoyaltyPoints !== undefined && (
               <div>
                 <span style={{ color: "#64748b", display: "block", fontSize: "0.72rem", textTransform: "uppercase", fontWeight: 700 }}>
-                  Loyalty Points
+                  Active Loyalty Points
                 </span>
                 <strong style={{ color: "#0066cc" }}>
-                  {(customerLoyaltyPoints ?? sale.loyalty_points) || 0} pts
+                  {activeLoyaltyPoints} pts
                 </strong>
                 {sale.points_earned !== undefined && sale.points_earned > 0 && (
                   <span style={{ display: "block", color: "#16a34a", fontSize: "0.76rem" }}>
@@ -572,7 +583,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               </div>
             )}
 
-            {(customerLoyaltyPoints !== undefined || sale.loyalty_points !== undefined) && (
+            {activeLoyaltyPoints !== undefined && (
               <div
                 style={{
                   display: "flex",
@@ -585,9 +596,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   fontWeight: 600,
                 }}
               >
-                <span>Total Loyalty Points:</span>
+                <span>Active Loyalty Points:</span>
                 <span style={{ fontWeight: 700 }}>
-                  {(customerLoyaltyPoints ?? sale.loyalty_points) || 0} pts
+                  {activeLoyaltyPoints} pts
                   {sale.points_earned !== undefined && sale.points_earned > 0 && (
                     <span style={{ color: "#16a34a", marginLeft: "4px" }}>
                       (+{sale.points_earned} this bill)

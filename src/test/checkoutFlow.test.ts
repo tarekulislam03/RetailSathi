@@ -4,6 +4,7 @@ import { getDb } from "../services/database";
 import { createProduct } from "../features/inventory/services/inventoryService";
 import { createSale } from "../features/billing/services/billingService";
 import { CartItem } from "../features/billing/types";
+import { getCartTotalUnits } from "../features/billing/utils/cartUtils";
 import { CheckoutPaymentDetails } from "../features/billing/components/CheckoutInvoiceModal";
 
 describe("Billing Checkout Flow Tests", () => {
@@ -335,5 +336,40 @@ describe("Billing Checkout Flow Tests", () => {
 
     // 5. Searching name "Sunil" finds customer #7
     expect(filterByName("Sunil").map((c) => c.id)).toEqual([7]);
+  });
+
+  it("should calculate total units added in the cart accurately", () => {
+    expect(getCartTotalUnits([])).toBe(0);
+
+    const sampleCart: CartItem[] = [
+      {
+        product: {
+          id: 1,
+          name: "Item A",
+          category: "Grocery",
+          price: 50,
+          cost_price: 40,
+          stock: 10,
+          unit: "pcs",
+          barcode: "111",
+        },
+        quantity: 3,
+      },
+      {
+        product: {
+          id: 2,
+          name: "Item B",
+          category: "Grocery",
+          price: 100,
+          cost_price: 80,
+          stock: 20,
+          unit: "kg",
+          barcode: "222",
+        },
+        quantity: 1.5,
+      },
+    ];
+
+    expect(getCartTotalUnits(sampleCart)).toBe(4.5);
   });
 });

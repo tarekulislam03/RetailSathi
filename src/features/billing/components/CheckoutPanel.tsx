@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { CartItem } from "../types";
+import { getCartTotalUnits } from "../utils/cartUtils";
 import { Customer } from "../../customers/types";
 import { MarketingPerson } from "../../marketing/types";
 import { CheckoutPaymentDetails } from "./CheckoutInvoiceModal";
@@ -43,6 +44,8 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
   const [upiPaidInput, setUpiPaidInput] = useState<string>("");
   // Single Payment Input
   const [singlePaidInput, setSinglePaidInput] = useState<string>("");
+
+  const totalUnits = getCartTotalUnits(cart);
 
   // 1. Subtotal (Total MRP)
   const totalMRP = cart.reduce(
@@ -562,6 +565,11 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
 
       {/* Bill Totals Summary */}
       <div className="bill-summary-box">
+        <div className="summary-row" style={{ color: "#4d5c6d", fontSize: "0.84rem" }}>
+          <span>Total Units ({cart.length} {cart.length === 1 ? "item" : "items"}):</span>
+          <span style={{ fontWeight: 700 }}>{totalUnits}</span>
+        </div>
+
         <div className="summary-row">
           <span>Subtotal:</span>
           <span style={{ fontWeight: 700 }}>₹{totalMRP.toFixed(2)}</span>
