@@ -1,3 +1,13 @@
+# Retail Sathi v0.3.7 - Manual Lucky Draw Active Points Deduction
+
+### 🚀 Key Changes & Fixes
+- **Manual Lucky Draw Active Points Deduction**:
+  - Active loyalty points are no longer automatically reset/deducted whenever lifetime points exceed multiples of 10.
+  - Active points now remain intact (`lifetime_points - lucky_draw_used * 10`) and are only deducted by 10 points when the user manually increases **Lucky Draw Used** on the Customers page.
+  - Updated checkout previews, saved receipts, thermal ESC/POS receipts, and customer search dropdowns to reflect `lucky_draw_used` consistently.
+
+---
+
 # Retail Sathi v0.3.6 - Active Loyalty Points on Receipts, Billing Total Units & AI Bill Import Verification
 
 ### 🚀 Key Features & Enhancements

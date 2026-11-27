@@ -172,7 +172,7 @@ describe("Image-Based Receipt Generator Tests", () => {
   });
 
   it("should render active loyalty points (including current sale) and customer ID on receipt for existing and new customers", () => {
-    // Existing customer with 45 points who earned 8 extra points (lifetime 53 pts -> active 3 pts)
+    // Existing customer with 45 points who earned 8 extra points (lifetime 53 pts, 0 draws used -> active 53 pts)
     const existingCustSale: Sale = {
       ...mockSale,
       customer_id: 101,
@@ -224,8 +224,13 @@ describe("Image-Based Receipt Generator Tests", () => {
 
       expect(drawnTexts).toContain("Active Points:");
       expect(drawnTexts).toContain("Active Loyalty Points:");
-      expect(drawnTexts).toContain("3 pts");
+      expect(drawnTexts).toContain("53 pts");
       expect(drawnTexts).toContain("+8 pts");
+
+      // When lucky draws have been used, active_points reflects the manual deduction (e.g., 53 - 4*10 = 13 pts)
+      drawnTexts.length = 0;
+      createReceiptCanvas({ ...existingCustSale, active_points: 13 }, { paperWidth: 80 });
+      expect(drawnTexts).toContain("13 pts");
       expect(drawnTexts).not.toContain("53 pts");
     } finally {
       (globalThis as any).document = origDocument;

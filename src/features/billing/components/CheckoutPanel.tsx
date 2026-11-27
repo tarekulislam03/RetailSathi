@@ -291,7 +291,7 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
                       fontWeight: 600,
                     }}
                   >
-                    {c.active_points ?? (c.loyalty_points % 10)} active pts
+                    {c.active_points ?? Math.max(0, c.loyalty_points - (c.lucky_draw_used || 0) * 10)} active pts
                   </span>
                   {(c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)) > 0 && (
                     <span
@@ -404,7 +404,7 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
                       fontWeight: 600,
                     }}
                   >
-                    {c.active_points ?? (c.loyalty_points % 10)} active pts
+                    {c.active_points ?? Math.max(0, c.loyalty_points - (c.lucky_draw_used || 0) * 10)} active pts
                   </span>
                   {(c.lucky_draw_count ?? Math.floor(c.loyalty_points / 10)) > 0 && (
                     <span
@@ -517,7 +517,7 @@ export const CheckoutPanel: React.FC<CheckoutPanelProps> = ({
             <div style={{ color: "#4d5c6d" }}>
               Active:{" "}
               <strong style={{ color: "#16a34a" }}>
-                {selectedCustomer.active_points ?? (selectedCustomer.loyalty_points % 10)} pts
+                {selectedCustomer.active_points ?? Math.max(0, selectedCustomer.loyalty_points - (selectedCustomer.lucky_draw_used || 0) * 10)} pts
               </strong>
               {" | "}
               Lifetime:{" "}
