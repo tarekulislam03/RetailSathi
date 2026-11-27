@@ -160,6 +160,7 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
   const earnedLoyaltyPoints = calculateLoyaltyPoints(grandTotal);
   const [existingTotalSpent, setExistingTotalSpent] = useState<number>(0);
   const [existingCustomerId, setExistingCustomerId] = useState<number | null>(null);
+  const [existingLuckyDrawUsed, setExistingLuckyDrawUsed] = useState<number>(0);
 
   useEffect(() => {
     if (!isOpen || !isNamedCustomer) return;
@@ -169,28 +170,31 @@ export const CheckoutInvoiceModal: React.FC<CheckoutInvoiceModalProps> = ({
       try {
         let canonicalPhone = phone;
         let canonicalName = name;
-        const rows = await db.select<{ id: number; name: string; phone: string }[]>(
-          "SELECT id, name, phone FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+        const rows = await db.select<{ id: number; name: string; phone: string; lucky_draw_used?: number }[]>(
+          "SELECT id, name, phone, COALESCE(lucky_draw_used, 0) AS lucky_draw_used FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
           [phone, name]
         );
         if (rows.length > 0) {
           setExistingCustomerId(rows[0].id);
+          setExistingLuckyDrawUsed(Math.max(0, Number(rows[0].lucky_draw_used) || 0));
           if (rows[0].phone && rows[0].phone.trim()) canonicalPhone = rows[0].phone.trim();
           if (rows[0].name && rows[0].name.trim()) canonicalName = rows[0].name.trim();
         } else {
           setExistingCustomerId(null);
+          setExistingLuckyDrawUsed(0);
         }
         const { spent } = await getCustomerTotalSpent(canonicalPhone, canonicalName);
         setExistingTotalSpent(spent);
       } catch {
         setExistingCustomerId(null);
         setExistingTotalSpent(0);
+        setExistingLuckyDrawUsed(0);
       }
     });
   }, [isOpen, customerPhone, customerName, isNamedCustomer]);
 
   const projectedLoyaltyPoints = calculateLoyaltyPoints(existingTotalSpent + grandTotal);
-  const projectedActivePoints = calculateActivePoints(projectedLoyaltyPoints);
+  const projectedActivePoints = calculateActivePoints(projectedLoyaltyPoints, existingLuckyDrawUsed);
 
   // Pagination
   const totalPages = Math.ceil(totalItems / pageSize) || 1;

@@ -991,7 +991,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
       expect(rahul.name).toBe("RAHUL SHARMA");
       expect(rahul.total_spent).toBe(1000);
       expect(rahul.loyalty_points).toBe(10); // ₹1000 purchase = 10 lifetime pts
-      expect(rahul.active_points).toBe(0); // Resets at multiples of 10
+      expect(rahul.active_points).toBe(10); // Does not auto-cut at 10; stays 10 until lucky draw is used
       expect(rahul.lucky_draw_used).toBe(0);
       expect(rahul.lucky_draw_count).toBe(1); // 10 pts / 10 = 1 lucky draw entry
       expect(rahul.dues).toBe(1000); // Recorded dues from Credit/Due sale
@@ -1059,6 +1059,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
       const rahulRefreshed = refreshedCustomers.find((c) => c.id === rahul.id);
       expect(rahulRefreshed?.lucky_draw_used).toBe(1);
       expect(rahulRefreshed?.lucky_draw_count).toBe(0); // 1 earned - 1 used = 0 eligible
+      expect(rahulRefreshed?.active_points).toBe(0); // 10 - (1 * 10) = 0 active points after using 1 lucky draw
 
       console.log("customer loyalty points and dues calculation test passed!");
     });
@@ -1118,9 +1119,9 @@ describe("Retail Sathi Backend Logic Tests", () => {
         ],
       });
 
-      // Updated points and customer ID on receipt/bill should be 53 (45 + 8) and active_points 3
+      // Updated points and customer ID on receipt/bill should be 53 (45 + 8) and active_points 53 (no lucky draws used)
       expect(vikramSale.loyalty_points).toBe(53);
-      expect(vikramSale.active_points).toBe(3);
+      expect(vikramSale.active_points).toBe(53);
       expect(vikramSale.points_earned).toBe(8);
       expect(vikramSale.customer_id).toBe(custId);
 
@@ -1128,12 +1129,12 @@ describe("Retail Sathi Backend Logic Tests", () => {
       const customersAfterVikram = await fetchCustomers();
       const vikramAfter = customersAfterVikram.find((c) => c.id === custId);
       expect(vikramAfter?.loyalty_points).toBe(53);
-      expect(vikramAfter?.active_points).toBe(3);
+      expect(vikramAfter?.active_points).toBe(53);
 
-      // Verify fetching sale details preserves 53 loyalty points, 3 active points, and customer ID
+      // Verify fetching sale details preserves 53 loyalty points, 53 active points, and customer ID
       const fetchedVikramSale = await fetchSaleDetails(vikramSale.id);
       expect(fetchedVikramSale?.loyalty_points).toBe(53);
-      expect(fetchedVikramSale?.active_points).toBe(3);
+      expect(fetchedVikramSale?.active_points).toBe(53);
       expect(fetchedVikramSale?.customer_id).toBe(custId);
 
       // 2. New customer: not previously in database
@@ -1226,13 +1227,13 @@ describe("Retail Sathi Backend Logic Tests", () => {
       let amit = customers.find((c) => c.phone === "9811122233");
       expect(amit?.total_spent).toBe(1000);
       expect(amit?.loyalty_points).toBe(10);
-      expect(amit?.active_points).toBe(0);
+      expect(amit?.active_points).toBe(10);
       expect(amit?.lucky_draw_count).toBe(1);
 
-      // 4. Printing/fetching the first bill receipt later must show strictly 10 pts (not stale/inflated) and 0 active pts
+      // 4. Printing/fetching the first bill receipt later must show strictly 10 pts (not stale/inflated) and 10 active pts
       const receiptLater = await fetchSaleDetails(firstBill.id);
       expect(receiptLater?.loyalty_points).toBe(10);
-      expect(receiptLater?.active_points).toBe(0);
+      expect(receiptLater?.active_points).toBe(10);
       expect(receiptLater?.points_earned).toBe(10);
 
       // 5. Editing/updating the saved bill (e.g. before or after printing receipt later) without changing amount
@@ -1270,7 +1271,7 @@ describe("Retail Sathi Backend Logic Tests", () => {
         ],
       });
       expect(updatedBillNewAmount.loyalty_points).toBe(15);
-      expect(updatedBillNewAmount.active_points).toBe(5);
+      expect(updatedBillNewAmount.active_points).toBe(15);
 
       customers = await fetchCustomers();
       amit = customers.find((c) => c.phone === "9811122233");

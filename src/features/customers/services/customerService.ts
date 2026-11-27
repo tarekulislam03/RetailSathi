@@ -12,11 +12,16 @@ export function calculateLoyaltyPoints(totalSpent: number): number {
 }
 
 /**
- * Calculates active loyalty points (resets every 10 points).
+ * Calculates active loyalty points: lifetime points minus 10 points for each lucky draw used.
+ * Points are only deducted from active points when lucky_draw_used is manually increased.
  */
-export function calculateActivePoints(lifetimePoints: number): number {
+export function calculateActivePoints(
+  lifetimePoints: number,
+  luckyDrawUsed: number = 0
+): number {
   if (!lifetimePoints || lifetimePoints <= 0) return 0;
-  return Math.floor(lifetimePoints) % 10;
+  const used = Math.max(0, Math.floor(luckyDrawUsed || 0));
+  return Math.max(0, Math.floor(lifetimePoints) - used * 10);
 }
 
 /**
@@ -129,7 +134,7 @@ export async function fetchCustomers(): Promise<Customer[]> {
       total_purchases_count: totalCount,
       total_spent: totalSpent,
       loyalty_points: finalLoyaltyPoints,
-      active_points: calculateActivePoints(finalLoyaltyPoints),
+      active_points: calculateActivePoints(finalLoyaltyPoints, luckyDrawUsed),
       lucky_draw_used: luckyDrawUsed,
       lucky_draw_count: eligibleLuckyDraws,
       dues: Number(r.dues) || 0,
@@ -313,7 +318,7 @@ export async function recordCustomerSale(
   paymentMode: string,
   firstProductId?: number,
   dueAmount?: number
-): Promise<{ customerId: number; updatedPoints: number; earnedPoints: number; customerName: string; customerPhone: string } | null> {
+): Promise<{ customerId: number; updatedPoints: number; earnedPoints: number; luckyDrawUsed: number; customerName: string; customerPhone: string } | null> {
   const phone = (customerPhone || "").trim();
   const name = (customerName || "").trim();
   if (!phone && (!name || name.toLowerCase() === "walk-in customer")) {
@@ -325,17 +330,19 @@ export async function recordCustomerSale(
   // Find existing customer by phone or name
   let customerId: number | null = null;
   let currentDues = 0;
+  let luckyDrawUsed = 0;
   let canonicalName = name;
   let canonicalPhone = phone;
 
   if (phone) {
-    const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
-      "SELECT id, name, phone, dues FROM customers WHERE phone = $1 LIMIT 1",
+    const rows = await db.select<{ id: number; name: string; phone: string; dues: number; lucky_draw_used?: number }[]>(
+      "SELECT id, name, phone, dues, COALESCE(lucky_draw_used, 0) AS lucky_draw_used FROM customers WHERE phone = $1 LIMIT 1",
       [phone]
     );
     if (rows.length > 0) {
       customerId = rows[0].id;
       currentDues = Number(rows[0].dues) || 0;
+      luckyDrawUsed = Math.max(0, Number(rows[0].lucky_draw_used) || 0);
       if (rows[0].name && rows[0].name.trim()) {
         canonicalName = rows[0].name.trim();
       }
@@ -346,13 +353,14 @@ export async function recordCustomerSale(
   }
 
   if (!customerId && name && name.toLowerCase() !== "walk-in customer") {
-    const rows = await db.select<{ id: number; name: string; phone: string; dues: number }[]>(
-      "SELECT id, name, phone, dues FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
+    const rows = await db.select<{ id: number; name: string; phone: string; dues: number; lucky_draw_used?: number }[]>(
+      "SELECT id, name, phone, dues, COALESCE(lucky_draw_used, 0) AS lucky_draw_used FROM customers WHERE LOWER(name) = LOWER($1) LIMIT 1",
       [name]
     );
     if (rows.length > 0) {
       customerId = rows[0].id;
       currentDues = Number(rows[0].dues) || 0;
+      luckyDrawUsed = Math.max(0, Number(rows[0].lucky_draw_used) || 0);
       if (rows[0].name && rows[0].name.trim()) {
         canonicalName = rows[0].name.trim();
       }
@@ -411,6 +419,7 @@ export async function recordCustomerSale(
     customerId: customerId ?? 0,
     updatedPoints,
     earnedPoints,
+    luckyDrawUsed,
     customerName: newName,
     customerPhone: canonicalPhone,
   };

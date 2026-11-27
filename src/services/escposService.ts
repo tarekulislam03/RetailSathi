@@ -309,7 +309,7 @@ export function createReceiptCanvas(
     sale.active_points !== undefined && sale.active_points !== null
       ? sale.active_points
       : sale.loyalty_points !== undefined && sale.loyalty_points !== null
-        ? Math.max(0, Math.floor(sale.loyalty_points)) % 10
+        ? Math.max(0, Math.floor(sale.loyalty_points))
         : undefined;
 
   if (showCustomer && (sale.customer_name || sale.customer_phone || sale.customer_id)) {

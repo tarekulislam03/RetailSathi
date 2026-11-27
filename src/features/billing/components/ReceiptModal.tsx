@@ -60,6 +60,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const [customerIdState, setCustomerIdState] = useState<number | undefined>(
     sale.customer_id ?? undefined
   );
+  const [customerLuckyDrawUsed, setCustomerLuckyDrawUsed] = useState<number>(0);
 
   const hasAutoPrintedRef = useRef(false);
   const isPrintingRef = useRef(false);
@@ -76,8 +77,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     if (phone || (name && name.toLowerCase() !== "walk-in customer")) {
       getDb().then(async (db) => {
         try {
-          const rows = await db.select<{ id: number; name: string; phone: string }[]>(
-            "SELECT id, name, phone FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
+          const rows = await db.select<{ id: number; name: string; phone: string; lucky_draw_used?: number }[]>(
+            "SELECT id, name, phone, COALESCE(lucky_draw_used, 0) AS lucky_draw_used FROM customers WHERE (phone = $1 AND phone != '') OR (LOWER(name) = LOWER($2) AND name != '') LIMIT 1",
             [phone || "", name || ""]
           );
           let canonicalPhone = phone || "";
@@ -86,8 +87,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             if (!sale.customer_id) {
               setCustomerIdState(rows[0].id);
             }
+            setCustomerLuckyDrawUsed(Math.max(0, Number(rows[0].lucky_draw_used) || 0));
             canonicalPhone = rows[0].phone || canonicalPhone;
             canonicalName = rows[0].name || canonicalName;
+          } else {
+            setCustomerLuckyDrawUsed(0);
           }
           const { spent } = await getCustomerTotalSpent(canonicalPhone, canonicalName);
           setCustomerLoyaltyPoints(calculateLoyaltyPoints(spent));
@@ -130,7 +134,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         loyalty_points: resolvedLifetimePoints,
         active_points:
           resolvedLifetimePoints !== undefined && resolvedLifetimePoints !== null
-            ? calculateActivePoints(resolvedLifetimePoints)
+            ? calculateActivePoints(resolvedLifetimePoints, customerLuckyDrawUsed)
             : sale.active_points,
       };
 
@@ -230,7 +234,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   const resolvedLifetimePoints = customerLoyaltyPoints ?? sale.loyalty_points;
   const activeLoyaltyPoints =
     resolvedLifetimePoints !== undefined && resolvedLifetimePoints !== null
-      ? calculateActivePoints(resolvedLifetimePoints)
+      ? calculateActivePoints(resolvedLifetimePoints, customerLuckyDrawUsed)
       : sale.active_points;
 
   return (

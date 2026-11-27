@@ -8,7 +8,7 @@ export interface Customer {
   total_purchases_count?: number;
   total_spent?: number;
   loyalty_points: number; // Lifetime Points
-  active_points: number;  // Resets every 10 points (loyalty_points % 10)
+  active_points: number;  // Active points: max(0, loyalty_points - lucky_draw_used * 10)
   lucky_draw_used: number; // How many lucky draws the customer has used
   lucky_draw_count: number; // Remaining eligible lucky draws: max(0, floor(loyalty_points / 10) - lucky_draw_used)
   dues: number;
